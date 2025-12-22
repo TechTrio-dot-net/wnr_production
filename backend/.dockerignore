@@ -1,0 +1,16 @@
+node_modules
+dist
+logs
+*.log
+.env
+.env.*
+.git
+.gitignore
+*.md
+.vscode
+.idea
+.DS_Store
+coverage
+.nyc_output
+*.tsbuildinfo
+ecosystem.config.js.backup

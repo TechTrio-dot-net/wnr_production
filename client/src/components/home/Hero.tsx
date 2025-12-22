@@ -1,0 +1,401 @@
+// src/components/home/Hero.tsx
+"use client";
+
+import React, { useCallback, useMemo, useRef, useState, useEffect } from "react";
+import Head from "next/head";
+import Image, { type StaticImageData } from "next/image";
+import { usePathname } from "next/navigation";
+import SingleBoxStage from "../../components/three/SingleBoxStage";
+
+/* ========= SITE BASE (for canonical) ========= */
+const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/+$/, "");
+
+/* ========= HELPERS ========= */
+const fromUrl = (src: string) => ({ src } as unknown as StaticImageData);
+
+/** Cloudinary helper: inject f_auto,q_auto and optional width */
+const cld = (url: string, { w }: { w?: number } = {}) => {
+  if (!url) return url;
+  const t = ["f_auto", "q_auto", w ? `w_${w}` : null].filter(Boolean).join(",");
+  return url.replace("/upload/", `/upload/${t}/`);
+};
+
+/* ========= CLOUDINARY IMAGES ========= */
+/* POWER */
+const powerFront = fromUrl("https://res.cloudinary.com/dob666wa0/image/upload/v1761767122/Power_front_u7ppbt.jpg");
+const powerBack = fromUrl("https://res.cloudinary.com/dob666wa0/image/upload/v1761767122/Power_back_jaxoae.jpg");
+const powerLeft = fromUrl("https://res.cloudinary.com/dob666wa0/image/upload/v1761767123/Power_side1_smiiwg.jpg");
+const powerRight = fromUrl("https://res.cloudinary.com/dob666wa0/image/upload/v1761767123/Power_side2_jf4qf1.jpg");
+const powerTop = fromUrl("https://res.cloudinary.com/dob666wa0/image/upload/v1761767124/Power_top_mdpvhs.jpg");
+const powerBottom = fromUrl("https://res.cloudinary.com/dob666wa0/image/upload/v1761767119/Power_bottom_p6gdnn.jpg");
+
+/* DIGESTIVE */
+const digestiveFront = fromUrl("https://res.cloudinary.com/dob666wa0/image/upload/v1761767132/Digestive_FRONT_rzfnm4.jpg");
+const digestiveBack = fromUrl("https://res.cloudinary.com/dob666wa0/image/upload/v1761767131/Digestive_BACK_icworj.jpg");
+const digestiveLeft = fromUrl("https://res.cloudinary.com/dob666wa0/image/upload/v1761767133/Digestive_SIDE1_hnvscj.jpg");
+const digestiveRight = fromUrl("https://res.cloudinary.com/dob666wa0/image/upload/v1761767133/Digestive_SIDE2_vfmqex.jpg");
+const digestiveTop = fromUrl("https://res.cloudinary.com/dob666wa0/image/upload/v1761767134/Digestive_TOP_kg6gwk.jpg");
+const digestiveBottom = fromUrl("https://res.cloudinary.com/dob666wa0/image/upload/v1761767132/Digestive_BOTTOM_ic4pzr.jpg");
+
+/* SUGARWISE */
+const sugarwiseFront = fromUrl("https://res.cloudinary.com/dob666wa0/image/upload/v1761767129/Sugarwise_FRONT_lrervn.jpg");
+const sugarwiseBack = fromUrl("https://res.cloudinary.com/dob666wa0/image/upload/v1761767128/Sugarwise_BACK_wjshqp.jpg");
+const sugarwiseLeft = fromUrl("https://res.cloudinary.com/dob666wa0/image/upload/v1761767130/Sugarwise_SIDE1_tfjies.jpg");
+const sugarwiseRight = fromUrl("https://res.cloudinary.com/dob666wa0/image/upload/v1761767130/Sugarwise_SIDE2_asv5qb.jpg");
+const sugarwiseTop = fromUrl("https://res.cloudinary.com/dob666wa0/image/upload/v1761767131/Sugarwise_TOP_wmnnbr.jpg");
+const sugarwiseBottom = fromUrl("https://res.cloudinary.com/dob666wa0/image/upload/v1761767128/Sugarwise_BOTTOM_rkc3fe.jpg");
+
+/* SLIM */
+const slimFront = fromUrl("https://res.cloudinary.com/dob666wa0/image/upload/v1761767125/Slim_FRONT_xfuvfk.jpg");
+const slimBack = fromUrl("https://res.cloudinary.com/dob666wa0/image/upload/v1761767124/Slim_BACK_v6ru9r.jpg");
+const slimLeft = fromUrl("https://res.cloudinary.com/dob666wa0/image/upload/v1761767125/Slim_SIDE1_zbwrf9.jpg");
+const slimRight = fromUrl("https://res.cloudinary.com/dob666wa0/image/upload/v1761767127/Slim_SIDE2_ur6ver.jpg");
+const slimTop = fromUrl("https://res.cloudinary.com/dob666wa0/image/upload/v1761767127/Slim_TOP_muce8v.jpg");
+const slimBottom = fromUrl("https://res.cloudinary.com/dob666wa0/image/upload/v1761767124/Slim_BOTTOM_rp4d8k.jpg");
+
+/* GUTEASE */
+const guteaseFront = fromUrl("https://res.cloudinary.com/dob666wa0/image/upload/v1761767120/Gutease_FRONT_yqpae2.jpg");
+const guteaseBack = fromUrl("https://res.cloudinary.com/dob666wa0/image/upload/v1761767119/Gutease_BACK_dki6zv.jpg");
+const guteaseLeft = fromUrl("https://res.cloudinary.com/dob666wa0/image/upload/v1761767120/Gutease_SIDE1_omgly9.jpg");
+const guteaseRight = fromUrl("https://res.cloudinary.com/dob666wa0/image/upload/v1761767122/Gutease_SIDE2_seh3ly.jpg");
+const guteaseTop = fromUrl("https://res.cloudinary.com/dob666wa0/image/upload/v1761767121/Gutease_TOP_unzoic.jpg");
+const guteaseBottom = fromUrl("https://res.cloudinary.com/dob666wa0/image/upload/v1761767119/Gutease_BOTTOM_azsknk.jpg");
+
+/* ========= DESKTOP & MOBILE BANNERS ========= */
+const bannerPower = "https://res.cloudinary.com/dob666wa0/image/upload/v1761766962/Power_Brew_Banner_xznw8m.png";
+const bannerDigestive = "https://res.cloudinary.com/dob666wa0/image/upload/v1761766963/Digestive_Bew_Banner_uqt2zg.png";
+const bannerSugarwise = "https://res.cloudinary.com/dob666wa0/image/upload/v1761766962/Sugarwise_Brew_Banner_vcohlf.png";
+const bannerSlim = "https://res.cloudinary.com/dob666wa0/image/upload/v1761766962/Slim_Brew_Banner_mzhxcv.png";
+const bannerGutease = "https://res.cloudinary.com/dob666wa0/image/upload/v1761766963/Gutease_Bew_Banner_wnbd44.png";
+
+const bannerPowerMobile = "https://res.cloudinary.com/dob666wa0/image/upload/v1761766962/Power_Brew_Mobile_Banner_rrmo6y.png";
+const bannerDigestiveMobile = "https://res.cloudinary.com/dob666wa0/image/upload/v1761766963/Digestive_Brew_Mobile_Banner_syno19.png";
+const bannerSugarwiseMobile = "https://res.cloudinary.com/dob666wa0/image/upload/v1761766962/Sugarwise_Brew_Mobile_Banner_mtucls.png";
+const bannerSlimMobile = "https://res.cloudinary.com/dob666wa0/image/upload/v1761766962/Slim_Brew_Mobile_Banner_kjl8x8.png";
+const bannerGuteaseMobile = "https://res.cloudinary.com/dob666wa0/image/upload/v1761766962/Gutease_Brew_Mobile_Banner_x5pox8.png";
+
+/* ========= TYPES ========= */
+type Faces = { front: string; back: string; left: string; right: string; top: string; bottom: string };
+type ProductId = "power" | "digestive" | "sugarwise" | "slim" | "gutease";
+type ProductConf = {
+  id: ProductId;
+  name: string;
+  faces: Faces;
+  heroClass: string;
+  finalRot?: [number, number, number];
+  banner: StaticImageData | string;
+  bannerMobile: StaticImageData | string;
+};
+
+const facesFrom = (f: {
+  front: StaticImageData; back: StaticImageData; left: StaticImageData;
+  right: StaticImageData; top: StaticImageData; bottom: StaticImageData;
+}): Faces => ({
+  front: f.front.src, back: f.back.src, left: f.left.src, right: f.right.src, top: f.top.src, bottom: f.bottom.src,
+});
+
+/* ========= PRODUCTS ========= */
+const PRODUCTS: ProductConf[] = [
+  { id: "power", name: "POWER BREW", faces: facesFrom({ front: powerFront, back: powerBack, left: powerLeft, right: powerRight, top: powerTop, bottom: powerBottom }), heroClass: "hero-berry", finalRot: [-0.22, Math.PI / 6, 0.1], banner: bannerPower, bannerMobile: bannerPowerMobile },
+  { id: "digestive", name: "DIGESTIVE BREW", faces: facesFrom({ front: digestiveFront, back: digestiveBack, left: digestiveLeft, right: digestiveRight, top: digestiveTop, bottom: digestiveBottom }), heroClass: "hero-digestive", finalRot: [-0.24, Math.PI / 5.2, 0.08], banner: bannerDigestive, bannerMobile: bannerDigestiveMobile },
+  { id: "sugarwise", name: "SUGARWISE BREW", faces: facesFrom({ front: sugarwiseFront, back: sugarwiseBack, left: sugarwiseLeft, right: sugarwiseRight, top: sugarwiseTop, bottom: sugarwiseBottom }), heroClass: "hero-sugarwise", finalRot: [-0.22, Math.PI / 6, 0.06], banner: bannerSugarwise, bannerMobile: bannerSugarwiseMobile },
+  { id: "slim", name: "SLIM BREW", faces: facesFrom({ front: slimFront, back: slimBack, left: slimLeft, right: slimRight, top: slimTop, bottom: slimBottom }), heroClass: "hero-slim", finalRot: [-0.2, Math.PI / 5.5, 0.05], banner: bannerSlim, bannerMobile: bannerSlimMobile },
+  { id: "gutease", name: "GUTEASE BREW", faces: facesFrom({ front: guteaseFront, back: guteaseBack, left: guteaseLeft, right: guteaseRight, top: guteaseTop, bottom: guteaseBottom }), heroClass: "hero-gutease", finalRot: [-0.26, Math.PI / 5.8, 0.08], banner: bannerGutease, bannerMobile: bannerGuteaseMobile },
+];
+
+const toSrc = (x: string | StaticImageData) => (typeof x === "string" ? x : x.src);
+
+/* ========= FLOATING TITLES ========= */
+const FLOATING_TITLES = [
+  "Enjoy Herbal Brew for Healthy Good Habits",
+  "It's not Green Tea, Its Herbal Brew",
+  "Hot Herbal Brews, Healthy Habits",
+];
+
+/* ========= PREFETCH UTILS ========= */
+const decodeCache = new Map<string, Promise<void>>();
+function decodeImage(url: string, priority: "auto" | "high" = "auto"): Promise<void> {
+  if (decodeCache.has(url)) return decodeCache.get(url)!;
+  const p = new Promise<void>((resolve) => {
+    const img = new window.Image();
+    img.decoding = "async";
+    // @ts-ignore
+    if ("fetchPriority" in img) img.fetchPriority = priority;
+    img.src = url;
+    img.onload = () => (img.decode?.() ?? Promise.resolve()).finally(() => resolve());
+    img.onerror = () => resolve();
+  });
+  decodeCache.set(url, p);
+  return p;
+}
+function preloadProductFaces(product: ProductConf, priority: "auto" | "high" = "auto") {
+  return Promise.all(Object.values(product.faces).map((u) => decodeImage(u, priority))).then(() => undefined);
+}
+function idle(cb: () => void, delay = 300) {
+  const id = window.setTimeout(cb, delay);
+  return () => window.clearTimeout(id);
+}
+
+/* ========= MAIN COMPONENT ========= */
+export default function Hero() {
+  const [idx, setIdx] = useState(0);
+  const current = PRODUCTS[idx];
+  const currentTitle = FLOATING_TITLES[idx % FLOATING_TITLES.length];
+
+  // Optimize textures
+  const facesOptimized = useMemo(() => {
+    const f = current.faces;
+    return Object.fromEntries(Object.entries(f).map(([k, v]) => [k, cld(v, { w: 1024 })])) as Faces;
+  }, [current]);
+
+  // Canonical
+  const pathname = usePathname();
+  const canonicalUrl = useMemo(() => (pathname ? `${SITE_URL}${pathname}` : ""), [pathname]);
+
+  /* UI states */
+  const [hintsVisible, setHintsVisible] = useState(true);
+  const [grabbing, setGrabbing] = useState(false);
+  const [hovering, setHovering] = useState(false);
+
+  // Cursor-follow tooltip
+  const tooltipRef = useRef<HTMLDivElement | null>(null);
+  const targetPos = useRef({ x: 0, y: 0 });
+  const currentPos = useRef({ x: 0, y: 0 });
+  const frameRef = useRef<number | null>(null);
+
+  const startRAF = useCallback(() => {
+    if (frameRef.current) return;
+    const tick = () => {
+      const el = tooltipRef.current;
+      if (el) {
+        currentPos.current.x += (targetPos.current.x - currentPos.current.x) * 0.18;
+        currentPos.current.y += (targetPos.current.y - currentPos.current.y) * 0.18;
+        el.style.transform = `translate3d(${currentPos.current.x}px, ${currentPos.current.y}px, 0)`;
+      }
+      frameRef.current = requestAnimationFrame(tick);
+    };
+    frameRef.current = requestAnimationFrame(tick);
+  }, []);
+  const stopRAF = useCallback(() => {
+    if (frameRef.current) cancelAnimationFrame(frameRef.current);
+    frameRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setHintsVisible(false), 10000);
+    return () => window.clearTimeout(t);
+  }, []);
+  const dismissHints = useCallback(() => setHintsVisible(false), []);
+
+  /* Preload current, then idle prefetch next */
+  useEffect(() => {
+    preloadProductFaces(current, "high");
+  }, [current]);
+
+  useEffect(() => {
+    const cleanup = idle(() => {
+      const n1 = (idx + 1) % PRODUCTS.length;
+      const n2 = (idx + 2) % PRODUCTS.length;
+      preloadProductFaces(PRODUCTS[n1], "auto");
+      idle(() => preloadProductFaces(PRODUCTS[n2], "auto"), 400);
+    }, 250);
+    return cleanup;
+  }, [idx]);
+
+  /* Next product (click/tap or auto-rotate) */
+  const next = useCallback(async () => {
+    const targetIdx = (idx + 1) % PRODUCTS.length;
+    const target = PRODUCTS[targetIdx];
+    const decodePromise = preloadProductFaces(target, "high");
+    const timeout = new Promise<void>((r) => setTimeout(r, 150));
+    await Promise.race([decodePromise, timeout]);
+    setIdx(targetIdx);
+  }, [idx]);
+
+  // Auto-advance products every 3 seconds
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      void next();
+    }, 3000);
+    return () => window.clearInterval(id);
+  }, [next]);
+
+  /* Keyboard & pointer */
+  const onKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        dismissHints();
+        void next();
+      }
+    },
+    [next, dismissHints]
+  );
+
+  const drag = useRef<{ down: boolean; moved: boolean }>({ down: false, moved: false });
+  const onHeroPointerDown = useCallback(() => {
+    drag.current = { down: true, moved: false };
+    dismissHints();
+  }, [dismissHints]);
+  const onHeroPointerMove = useCallback(() => {
+    if (drag.current.down) drag.current.moved = true;
+  }, []);
+  const onHeroPointerUp = useCallback(() => {
+    const wasDrag = drag.current.down && drag.current.moved;
+    drag.current = { down: false, moved: false };
+    if (!wasDrag) void next();
+  }, [next]);
+
+  // Optimized banners
+  const desktopBanner = cld(toSrc(current.banner), { w: 1920 });
+  const mobileBanner = cld(toSrc(current.bannerMobile), { w: 1080 });
+
+  return (
+    <section
+      className="relative min-h-[80vh] md:h-[80vh] text-white overflow-hidden"
+      tabIndex={0}
+      onKeyDown={onKeyDown}
+      onPointerDown={onHeroPointerDown}
+      onPointerMove={onHeroPointerMove}
+      onPointerUp={onHeroPointerUp}
+      aria-label={`Hero — ${current.name}. Click or press Space/Enter to view next product. Drag to rotate.`}
+    >
+      <Head>
+        {!!canonicalUrl && <link rel="canonical" href={canonicalUrl} />}
+
+        {/* Preload banners (with proper camelCase attributes) */}
+        <link
+          rel="preload"
+          as="image"
+          href={desktopBanner}
+          imageSrcSet={`${cld(toSrc(current.banner), { w: 1280 })} 1280w, ${desktopBanner} 1920w`}
+          imageSizes="(min-width:1024px) 90vw, 100vw"
+        />
+        <link
+          rel="preload"
+          as="image"
+          href={mobileBanner}
+          media="(max-width: 768px)"
+          imageSrcSet={`${cld(toSrc(current.bannerMobile), { w: 720 })} 720w, ${mobileBanner} 1080w`}
+          imageSizes="100vw"
+        />
+        {Object.values(facesOptimized).map((u) => (
+          <link key={u} rel="preload" as="image" href={u} />
+        ))}
+      </Head>
+
+      {/* FULL-BLEED BACKGROUND */}
+      <div className="absolute inset-0 -z-10">
+        {/* Desktop */}
+        <Image
+          src={desktopBanner}
+          alt={`${current.name} banner background`}
+          fill
+          priority
+          sizes="(min-width:1024px) 90vw, 100vw"
+          fetchPriority="high"
+          className="hidden md:block object-cover object-center"
+        />
+        {/* Mobile */}
+        <Image
+          src={mobileBanner}
+          alt={`${current.name} banner background`}
+          fill
+          priority
+          sizes="100vw"
+          fetchPriority="high"
+          className="md:hidden object-cover object-center"
+        />
+      </div>
+
+      {/* FLOATING TEXT */}
+      <div className="absolute inset-0 z-10 flex items-start justify-center pt-30 md:pt-30 lg:pt-30 pointer-events-none">
+        <div className="wnr-container w-full flex justify-center">
+          <h1 className="text-white text-4xl md:text-6xl lg:text-7xl font-bold text-center px-4 drop-shadow-[0_4px_12px_rgba(0,0,0,0.5)]">
+            {currentTitle}
+          </h1>
+        </div>
+      </div>
+
+      {/* CENTER CONTENT */}
+      <div className="relative z-10 wnr-container flex items-center justify-center min-h-[inherit] pt-20 md:pt-6">
+        <div
+          className={`relative w-full max-w-[1020px] max-h-[800px] overflow-visible select-none ${
+            grabbing ? "cursor-grabbing" : "cursor-grab"
+          }`}
+          onPointerEnter={() => {
+            setHovering(true);
+            startRAF();
+          }}
+          onPointerLeave={() => {
+            setHovering(false);
+            setGrabbing(false);
+            stopRAF();
+          }}
+          onPointerMove={(e) => {
+            const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+            targetPos.current = { x: e.clientX - rect.left + 12, y: e.clientY - rect.top + 12 };
+          }}
+          onPointerDownCapture={() => setGrabbing(true)}
+          onPointerUpCapture={() => setGrabbing(false)}
+          aria-describedby="hero-rotate-hint"
+        >
+          {/* cursor-follow tooltip (desktop) */}
+          <div
+            ref={tooltipRef}
+            className={`pointer-events-none hidden md:flex items-center gap-2 absolute top-0 left-0 z-20 will-change-transform transition-opacity duration-150 ${
+              hovering ? "opacity-100" : "opacity-0"
+            }`}
+            aria-hidden="true"
+          >
+            <span className="rounded-full bg-black/55 backdrop-blur px-3 py-1 text-xs">Drag to rotate</span>
+          </div>
+
+          {/* 3D Stage */}
+          <div className="relative z-10">
+            <SingleBoxStage
+              faces={facesOptimized}
+              size={[3.8, 2.9, 2.5]}
+              scale={0.87}
+              minHeight={320}
+              maxHeight={560}
+              minWidth={260}
+              maxWidth={820}
+              safeMargin={{ x: 1.35, y: 1.25 }}
+              intro={{
+                enabled: true,
+                duration: 1.1,
+                from: { scale: 0.86, y: 0.25, z: -0.8, rot: [-0.6, 0.12, -0.18] },
+                to: { scale: 1.0, y: 0, z: 0, rot: (current.finalRot ?? [-0.22, Math.PI / 6, 0.1]) },
+              }}
+              controlsRotate
+              autoRotate
+              rotateSpeed={0.48}
+              theme="studio"
+            />
+          </div>
+
+          {/* hints (auto-hide) */}
+         {hintsVisible && (
+  <>
+    {/* Mobile hint */}
+    <div className="md:hidden pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-5 z-20">
+      <div className="rounded-full bg-black/55 backdrop-blur px-3 py-1.5 text-[12px] leading-tight whitespace-nowrap">
+        Tap anywhere to view next • Drag to rotate
+      </div>
+    </div>
+
+    {/* Desktop hint */}
+    <div className="hidden md:flex pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-12 z-20">
+      <div className="rounded-full bg-black/45 backdrop-blur px-4 py-2 text-sm">
+        Click anywhere to view next • Press Space/Enter • Drag to rotate
+      </div>
+    </div>
+  </>
+)}
+
+        </div>
+      </div>
+    </section>
+  );
+}
