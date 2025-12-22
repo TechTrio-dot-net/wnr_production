@@ -1,0 +1,28 @@
+# Docker Compose Override Example
+# Copy this to docker-compose.override.yml to customize settings
+# This file is automatically merged with docker-compose.yml
+
+version: '3.8'
+
+services:
+  backend:
+    # Add environment variables specific to your setup
+    environment:
+      - DEBUG=false
+      # Add more env vars here if needed
+    
+    # Uncomment to add volume mounts for development
+    # volumes:
+    #   - ./backend/src:/app/src:ro
+    #   - ./backend/logs:/app/logs
+
+  frontend:
+    # Add environment variables specific to your setup
+    environment:
+      - NEXT_TELEMETRY_DISABLED=1
+      # Add more env vars here if needed
+    
+    # Uncomment to add volume mounts for development
+    # volumes:
+    #   - ./client/src:/app/src:ro
+    #   - ./client/public:/app/public:ro

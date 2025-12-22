@@ -1,0 +1,116 @@
+version: '3.8'
+
+services:
+  # Backend Service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: production
+    container_name: wnr-backend
+    restart: always
+    ports:
+      - "5001:5001"
+    environment:
+      - NODE_ENV=production
+      - PORT=5001
+      # Node.js optimization flags for better performance
+      - NODE_OPTIONS=--max-old-space-size=512 --enable-source-maps
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./backend/logs:/app/logs
+    networks:
+      - wnr-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:5001/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 768M
+        reservations:
+          cpus: '0.75'
+          memory: 384M
+
+  # Frontend Service
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+      target: runner
+    container_name: wnr-frontend
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - NODE_OPTIONS=--max-old-space-size=512
+    env_file:
+      - ./client/.env.local
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - wnr-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+  # Admin UI Service
+  adminui:
+    build:
+      context: ./adminui
+      dockerfile: Dockerfile
+      target: runner
+    container_name: wnr-adminui
+    restart: always
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - HOSTNAME=0.0.0.0
+      - NODE_OPTIONS=--max-old-space-size=512
+    env_file:
+      - ./adminui/.env.local
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - wnr-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+networks:
+  wnr-network:
+    driver: bridge

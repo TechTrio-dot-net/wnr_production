@@ -1,0 +1,44 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+*.md
+!README.md
+
+# Environment files
+.env
+.env.*
+*.env
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Dependencies (will be installed in container)
+node_modules
+
+# Build outputs (will be built in container)
+dist
+build
+.next
+out
+
+# Testing
+coverage
+.nyc_output
+
+# Misc
+*.pem
+*.key
+*.cert
