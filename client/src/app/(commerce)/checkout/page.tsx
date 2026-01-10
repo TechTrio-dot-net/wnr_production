@@ -9,6 +9,7 @@ import { isLoggedIn, currentPathWithQuery } from "@/lib/auth";
 import { buildUrl as build, CartAPI } from "@/lib/api";
 import AddAddressModal, { type AddressPayload } from "@/components/common/AddAddressModal";
 import { toast } from "sonner";
+import { trackInitiateCheckout } from "@/lib/metaPixel";
 
 /* ---------- Razorpay setup ---------- */
 declare global { interface Window { Razorpay?: any } }
@@ -34,6 +35,8 @@ type RenderItem = {
   image: string | StaticImageData;
   price: number;
   quantity: number;
+  stock?: number;
+  isOutOfStock?: boolean;
 };
 
 type ServerAddress = AddressPayload & { _id?: string };
@@ -125,12 +128,22 @@ export default function BuyNowPage() {
   const [addrModalOpen, setAddrModalOpen] = useState(false);
 
   /* ---------- Cart ---------- */
-  const { cart, subtotal } = useCart();
+  const { cart, subtotal, load: reloadCart } = useCart();
   const items: RenderItem[] = useMemo(() => {
     const list = cart?.items ?? [];
     return list.map((it) => {
       const p = it.product;
-      const price = (p?.price ?? it.priceAtAdd ?? 0) as number;
+      const originalPrice = (p?.price ?? it.priceAtAdd ?? 0) as number;
+      // Always use product's current discount. If product no longer has discount, don't apply stored discount from add time
+      const discountPercentage = (typeof p?.discountPercentage === 'number' && p.discountPercentage > 0)
+        ? p.discountPercentage
+        : undefined;
+      // Calculate discounted price if discount exists
+      const price = typeof discountPercentage === 'number' && discountPercentage > 0
+        ? Math.round(originalPrice * (1 - discountPercentage / 100))
+        : originalPrice;
+      const stock = typeof p?.stock === 'number' ? p.stock : undefined;
+      const isOutOfStock = typeof stock === 'number' && (stock === 0 || stock < it.qty);
       const imageSrc =
         (Array.isArray(p?.images) && p!.images.length > 0
           ? (typeof p!.images[0] === "string"
@@ -143,6 +156,8 @@ export default function BuyNowPage() {
         image: imageSrc,
         price,
         quantity: it.qty,
+        stock,
+        isOutOfStock,
       };
     });
   }, [cart]);
@@ -397,7 +412,22 @@ export default function BuyNowPage() {
 
       const data = await res.json();
       const totalCharge = Number(data?.totalShippingCharges);
+      
+      // Allow 0 as valid charge (for free delivery)
       if (!Number.isFinite(totalCharge) || totalCharge < 0) return null;
+
+      // If freeDelivery is enabled, totalCharge should be 0
+      if (data?.freeDelivery === true && totalCharge !== 0) {
+        console.warn("[Shipping] freeDelivery flag set but charge is not 0, forcing to 0");
+        return {
+          zone: data.zone,
+          carrier: data.carrier || "eshopboxStandard",
+          estimatedDeliveryDays: data.estimatedDeliveryDays,
+          totalShippingCharges: 0,
+          breakdown: data.breakdown || {},
+          freeDelivery: true,
+        };
+      }
 
       return {
         zone: data.zone,
@@ -405,6 +435,7 @@ export default function BuyNowPage() {
         estimatedDeliveryDays: data.estimatedDeliveryDays,
         totalShippingCharges: totalCharge,
         breakdown: data.breakdown || {},
+        ...(data?.freeDelivery ? { freeDelivery: true } : {}),
       };
     } catch {
       return null;
@@ -463,6 +494,34 @@ export default function BuyNowPage() {
     return () => clearTimeout(t);
   }, [fetchRate]);
 
+  /* ---------- Track InitiateCheckout for Meta Pixel ---------- */
+  useEffect(() => {
+    if (items.length > 0) {
+      // Build complete catalog data for Meta Pixel
+      const metaItems = items.map((it) => ({
+        id: it.id,
+        name: it.name,
+        price: it.price,
+        quantity: it.quantity,
+        brand: "Wild n' Root", // Brand name for catalog
+        // Note: SKU and category would need to be fetched from product data if available
+      }));
+      const totalValue = items.reduce((sum, it) => sum + it.price * it.quantity, 0);
+      trackInitiateCheckout(metaItems, totalValue);
+    }
+  }, [items]);
+
+  /* ---------- Refresh cart periodically to check for stock changes ---------- */
+  useEffect(() => {
+    // Refresh cart every 30 seconds while on checkout page to catch stock changes
+    if (items.length === 0) return;
+    const interval = setInterval(() => {
+      reloadCart().catch(console.error);
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(interval);
+  }, [items.length, reloadCart]);
+
   /* ---------- Pay ---------- */
   const handleReviewOrder = async () => {
     try {
@@ -474,11 +533,67 @@ export default function BuyNowPage() {
         return;
       }
 
+      // Reload cart to get latest stock information before checkout
+      await reloadCart();
+
       if (!selectedAddress) { toast.warning("Please select a delivery address.", { id: "addr" }); return; }
       if (!selectedAddress.line1 || !selectedAddress.city || !selectedAddress.state || !/^\d{6}$/.test(selectedAddress.pincode || "")) {
         toast.warning("Selected address is incomplete.", { id: "addr" }); return;
       }
       if ((items?.length ?? 0) === 0) { toast.warning("Your cart is empty.", { id: "cart" }); return; }
+
+      // Client-side stock check (quick check before server validation)
+      const outOfStockItems = items.filter(item => item.isOutOfStock);
+      if (outOfStockItems.length > 0) {
+        const itemNames = outOfStockItems.map(item => item.name).join(", ");
+        toast.error(
+          `Some items are out of stock: ${itemNames}. Please remove them from your cart before checkout.`,
+          { id: "stock", duration: 6000 }
+        );
+        return;
+      }
+
+      // Server-side stock validation before creating payment order (definitive check)
+      try {
+        const { getAuthHeader } = await import("@/lib/token");
+        const authHeaders = getAuthHeader();
+        const stockCheckRes = await fetch(build("/api/cart/validate-stock"), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...authHeaders,
+          },
+        });
+        if (!stockCheckRes.ok) {
+          const stockError = await stockCheckRes.json().catch(() => ({ message: "Stock validation failed", issues: [] }));
+          // Reload cart to get updated stock information
+          await reloadCart();
+          
+          if (stockError.issues && Array.isArray(stockError.issues) && stockError.issues.length > 0) {
+            const issueMessages = stockError.issues
+              .map((issue: any) => `${issue.productName}: ${issue.issue}`)
+              .join("; ");
+            toast.error(
+              `Cannot proceed to checkout: ${issueMessages}. Please remove unavailable items from your cart.`,
+              { id: "stock-check", duration: 8000 }
+            );
+          } else {
+            toast.error(
+              stockError.message || "Some items in your cart are no longer available. Please refresh your cart and remove out-of-stock items.",
+              { id: "stock-check", duration: 6000 }
+            );
+          }
+          return;
+        }
+      } catch (stockError) {
+        // If validation endpoint fails, show warning but continue (stock will be checked in verify)
+        console.warn("Stock validation check failed, will validate during payment verification", stockError);
+        toast.warning("Could not validate stock availability. Proceeding with checkout - stock will be validated during payment verification.", {
+          id: "stock-check-warn",
+          duration: 5000,
+        });
+      }
+
       if (!RZP_KEY_ID) {
         toast.error("Razorpay key is missing. Set NEXT_PUBLIC_RAZORPAY_KEY_ID and rebuild.", { id: "rzp" });
         return;
@@ -742,8 +857,8 @@ export default function BuyNowPage() {
                   <div className="flex-1">
                     <div className="flex items-center justify-between mb-1">
                       <span className="font-semibold">Standard Delivery</span>
-                      <span className="text-sm font-bold text-[#722F37]">
-                        {quote ? money(quote.totalShippingCharges) : "—"}
+                      <span className={`text-sm font-bold ${quote && quote.totalShippingCharges === 0 ? 'text-green-600' : 'text-[#722F37]'}`}>
+                        {quote && quote.totalShippingCharges === 0 ? "FREE" : quote ? money(quote.totalShippingCharges) : "—"}
                       </span>
                     </div>
                     <p className="text-sm text-gray-600">
@@ -780,8 +895,8 @@ export default function BuyNowPage() {
                           Fast
                         </span>
                       </div>
-                      <span className="text-sm font-bold text-[#722F37]">
-                        {expressQuote ? money(expressQuote.totalShippingCharges) : "—"}
+                      <span className={`text-sm font-bold ${expressQuote && expressQuote.totalShippingCharges === 0 ? 'text-green-600' : 'text-[#722F37]'}`}>
+                        {expressQuote && expressQuote.totalShippingCharges === 0 ? "FREE" : expressQuote ? money(expressQuote.totalShippingCharges) : "—"}
                       </span>
                     </div>
                     <p className="text-sm text-gray-600">
@@ -818,8 +933,8 @@ export default function BuyNowPage() {
                           Fastest
                         </span>
                       </div>
-                      <span className="text-sm font-bold text-[#722F37]">
-                        {primeQuote ? money(primeQuote.totalShippingCharges) : "—"}
+                      <span className={`text-sm font-bold ${primeQuote && primeQuote.totalShippingCharges === 0 ? 'text-green-600' : 'text-[#722F37]'}`}>
+                        {primeQuote && primeQuote.totalShippingCharges === 0 ? "FREE" : primeQuote ? money(primeQuote.totalShippingCharges) : "—"}
                       </span>
                     </div>
                     <p className="text-sm text-gray-600">
@@ -835,13 +950,33 @@ export default function BuyNowPage() {
             </div>
           )}
 
+          {/* Out of Stock Warning */}
+          {items.some(item => item.isOutOfStock) && (
+            <div className="bg-red-50 border-2 border-red-300 rounded-lg p-4 mb-4">
+              <div className="flex items-start gap-3">
+                <div className="text-red-600 text-xl">⚠️</div>
+                <div className="flex-1">
+                  <p className="font-semibold text-red-900 mb-1">Some items are out of stock</p>
+                  <p className="text-sm text-red-700 mb-2">
+                    Please remove out-of-stock items from your cart before proceeding to checkout.
+                  </p>
+                  <ul className="text-sm text-red-700 list-disc list-inside space-y-1">
+                    {items.filter(item => item.isOutOfStock).map((item, idx) => (
+                      <li key={idx}>{item.name}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Pay (Prepaid only) */}
           <button
             onClick={handleReviewOrder}
-            disabled={redeemingCoins}
+            disabled={redeemingCoins || items.some(item => item.isOutOfStock)}
             className="w-full bg-[#722F37] text-white py-3 rounded font-semibold hover:bg-[#5a2430] transition mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {redeemingCoins ? "Processing..." : "Review & Pay (Prepaid)"}
+            {redeemingCoins ? "Processing..." : items.some(item => item.isOutOfStock) ? "Remove out-of-stock items to continue" : "Review & Pay (Prepaid)"}
           </button>
         </section>
 
@@ -865,21 +1000,41 @@ export default function BuyNowPage() {
               lineTotal: it.price * it.quantity,
               lineSubtotal: it.price * it.quantity,
               lineDiscount: 0
-            }))).map((it, idx) => (
-              <div key={idx} className="flex items-center gap-4">
-                {items[idx] ? (
-                  <Image src={items[idx].image} alt={items[idx].name} width={64} height={64} className="rounded object-cover" />
-                ) : <div className="w-16 h-16 rounded bg-neutral-200" />}
-                <div className="flex-1">
-                  <p className="font-semibold text-gray-900">{it.name ?? items[idx]?.name ?? "Product"}</p>
-                  <p className="text-xs text-gray-500">Quantity: {it.qty}</p>
-                  <p className="text-xs text-gray-500">{money(it.unitPrice)} each</p>
+            }))).map((it, idx) => {
+              const item = items[idx];
+              const isItemOutOfStock = item?.isOutOfStock ?? false;
+              return (
+                <div key={idx} className={`flex items-center gap-4 p-3 rounded-lg ${isItemOutOfStock ? 'bg-red-50 border-2 border-red-200' : ''}`}>
+                  {item ? (
+                    <Image src={item.image} alt={item.name} width={64} height={64} className="rounded object-cover" />
+                  ) : <div className="w-16 h-16 rounded bg-neutral-200" />}
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className={`font-semibold ${isItemOutOfStock ? 'text-red-900' : 'text-gray-900'}`}>
+                        {it.name ?? item?.name ?? "Product"}
+                      </p>
+                      {isItemOutOfStock && (
+                        <span className="text-xs px-2 py-0.5 bg-red-500 text-white rounded-full font-medium">
+                          Out of Stock
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-500">Quantity: {it.qty}</p>
+                    <p className="text-xs text-gray-500">{money(it.unitPrice)} each</p>
+                    {isItemOutOfStock && (
+                      <p className="text-xs text-red-600 font-medium mt-1">
+                        This item is no longer available. Please remove it to continue.
+                      </p>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <div className={`font-bold text-lg ${isItemOutOfStock ? 'text-red-600 line-through' : 'text-[var(--wnr-berry)]'}`}>
+                      {money(it.lineSubtotal)}
+                    </div>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <div className="font-bold text-lg text-[var(--wnr-berry)]">{money(it.lineSubtotal)}</div>
-                </div>
-              </div>
-            ))}
+              );
+            })}
             {items.length === 0 && (
               <div className="text-sm text-gray-600">
                 Your cart is empty. <Link href="/products" className="underline">Shop products</Link>
@@ -1018,9 +1173,11 @@ export default function BuyNowPage() {
                   </span>
                 )}
               </div>
-              <span className="font-bold text-lg text-gray-900">
+              <span className={`font-bold text-lg ${shippingCharge === 0 ? 'text-green-600' : 'text-gray-900'}`}>
                 {quoting
                   ? "Calculating…"
+                  : shippingCharge === 0
+                  ? "FREE"
                   : shippingCharge > 0
                   ? money(shippingCharge)
                   : quote || expressQuote || primeQuote

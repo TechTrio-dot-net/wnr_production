@@ -33,7 +33,9 @@ const navigationItems = [
   { name: "Settings", href: "/settings", icon: <HiCog className="w-5 h-5" /> },
   { name: "User Management", href: "/user-management", icon: <HiUsers className="w-5 h-5" /> },
   { name: "Offer Strip", href: "/offer-strip", icon: <HiTag className="w-5 h-5" /> },
+  { name: "Ingredients Strip", href: "/ingredients-strip", icon: <HiTag className="w-5 h-5" /> },
   { name: "Coupons", href: "/coupons", icon: <HiTag className="w-5 h-5" /> },
+  { name: "Discounts", href: "/discounts", icon: <HiTag className="w-5 h-5" /> },
   { name: "Testimonials", href: "/testimonials", icon: <HiChatAlt2 className="w-5 h-5" /> },
   { name: "Logs", href: "/logs", icon: <HiClipboardList className="w-5 h-5" /> },
 ];
@@ -109,7 +111,7 @@ export default function SidebarSPA() {
             Management
           </h2>
           <ul className="space-y-2">
-            {navigationItems.slice(7).map((item) => (
+            {navigationItems.slice(8).map((item) => (
               <li key={item.name}>
                 <button
                   onClick={() => handleNavigation(item.href)}

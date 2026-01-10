@@ -4,6 +4,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { CartAPI, type CartResponse } from "@/lib/api";
 import { fetchMe, isLoggedIn, currentPathWithQuery } from "@/lib/auth";
+import { toast } from "sonner";
 
 type PendingLine = { productId: string; qty: number };
 const PENDING_CART_KEY = "wnr:pendingCart"; // lines saved when user isn't logged in
@@ -42,7 +43,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const subtotal = useMemo(
     () =>
       (cart?.items ?? []).reduce((sum, it) => {
-        const price = it.product?.price ?? it.priceAtAdd ?? 0;
+        const originalPrice = it.product?.price ?? it.priceAtAdd ?? 0;
+        // Always use product's current discount. If product no longer has discount, don't apply stored discount from add time
+        const discountPercentage = (typeof it.product?.discountPercentage === 'number' && it.product.discountPercentage > 0) 
+          ? it.product.discountPercentage 
+          : undefined;
+        // Calculate discounted price if discount exists
+        const price = typeof discountPercentage === 'number' && discountPercentage > 0
+          ? Math.round(originalPrice * (1 - discountPercentage / 100))
+          : originalPrice;
         return sum + price * it.qty;
       }, 0),
     [cart],
@@ -133,13 +142,22 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       try {
         const data = await CartAPI.addItem(productId, qty);
         setCart(data);
+        // Reload cart to get fresh stock information
+        await load();
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to add to cart");
+        const errorMessage = e instanceof Error ? e.message : "Failed to add to cart";
+        setError(errorMessage);
+        // Show toast for stock-related errors
+        if (errorMessage.includes("stock") || errorMessage.includes("Stock") || errorMessage.includes("out of stock")) {
+          toast.error(errorMessage);
+          // Reload cart to refresh stock status
+          await load();
+        }
       } finally {
         setLoading(false);
       }
     },
-    [],
+    [load],
   );
 
   const update = useCallback(
@@ -149,13 +167,22 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       try {
         const data = await CartAPI.updateItem(itemId, qty);
         setCart(data);
+        // Reload cart to get fresh stock information
+        await load();
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to update item");
+        const errorMessage = e instanceof Error ? e.message : "Failed to update item";
+        setError(errorMessage);
+        // Show toast for stock-related errors
+        if (errorMessage.includes("stock") || errorMessage.includes("Stock") || errorMessage.includes("out of stock")) {
+          toast.error(errorMessage);
+          // Reload cart to refresh stock status
+          await load();
+        }
       } finally {
         setLoading(false);
       }
     },
-    [],
+    [load],
   );
 
   const remove = useCallback(async (itemId: string) => {

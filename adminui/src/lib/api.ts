@@ -40,7 +40,19 @@ export async function http<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(text || `HTTP ${res.status}`);
+    // Try to parse JSON error response
+    let errorMessage = text || `HTTP ${res.status}`;
+    try {
+      const jsonError = JSON.parse(text);
+      if (jsonError.message) {
+        errorMessage = jsonError.message;
+      }
+    } catch {
+      // If not JSON, use the text as-is
+    }
+    const error = new Error(errorMessage) as Error & { status: number };
+    error.status = res.status;
+    throw error;
   }
 
   if (res.status === 204) return undefined as unknown as T;
@@ -216,6 +228,14 @@ export interface Product {
   status: "active" | "inactive" | "draft";
   images: string[];
   eshopboxProductId?: string;
+  about?: string;
+  ingredients?: string;
+  description?: string;
+  descriptionPoints?: string[];
+  discountPercentage?: number; // 0-100, e.g., 10 for 10% off
+  displayOrder?: number; // Display order (lower numbers appear first)
+  createdAt?: string;
+  updatedAt?: string;
 }
 type ProductDTO = Omit<Product, "id" | "hoverImage"> & { _id: string };
 
@@ -241,6 +261,27 @@ function productFromUnknown(raw: unknown): Product {
   const status: Product["status"] =
     statusVal === "inactive" || statusVal === "draft" ? statusVal : "active";
   const hoverImage = readHoverUrl(r.hover, r.hoverImage);
+  
+  // Extract all text fields
+  const about = optStr(r, "about");
+  const ingredients = optStr(r, "ingredients");
+  const description = optStr(r, "description");
+  const descriptionPoints = Array.isArray(r.descriptionPoints) 
+    ? (r.descriptionPoints as unknown[]).map(str).filter(Boolean)
+    : undefined;
+  
+  // Extract timestamps
+  const createdAt = optStr(r, "createdAt");
+  const updatedAt = optStr(r, "updatedAt");
+  
+  // Extract discountPercentage - include even if 0
+  const discountPercentage = typeof r.discountPercentage === "number" && r.discountPercentage >= 0 && r.discountPercentage <= 100
+    ? r.discountPercentage
+    : (r.discountPercentage === null || r.discountPercentage === undefined ? undefined : undefined);
+  
+  // Extract displayOrder
+  const displayOrder = typeof r.displayOrder === "number" ? r.displayOrder : undefined;
+  
   return {
     id: str(_id),
     name: str(r.name),
@@ -251,13 +292,23 @@ function productFromUnknown(raw: unknown): Product {
     images,
     ...(hoverImage ? { hoverImage } : {}),
     eshopboxProductId: optStr(r, "eshopboxProductId"),
+    ...(about ? { about } : {}),
+    ...(ingredients ? { ingredients } : {}),
+    ...(description ? { description } : {}),
+    ...(descriptionPoints && descriptionPoints.length > 0 ? { descriptionPoints } : {}),
+    // Always include discountPercentage if it's a valid number (including 0)
+    ...(typeof discountPercentage === "number" ? { discountPercentage } : {}),
+    ...(typeof displayOrder === "number" ? { displayOrder } : {}),
+    ...(createdAt ? { createdAt } : {}),
+    ...(updatedAt ? { updatedAt } : {}),
   };
 }
 function toProductDTO(p: Partial<Omit<Product, "id" | "hoverImage">>): Partial<ProductDTO> {
   return p as Partial<ProductDTO>;
 }
-export async function fetchProducts(): Promise<Product[]> {
-  const payload = await http<unknown>("/api/products");
+export async function fetchProducts(status?: "active" | "inactive" | "draft" | "all"): Promise<Product[]> {
+  const url = status ? `/api/products?status=${status}` : "/api/products";
+  const payload = await http<unknown>(url);
   const list = unwrapArray(payload);
   return list.map(productFromUnknown);
 }
@@ -419,7 +470,10 @@ export interface AdminOrderDetail {
   items: {
     product?: string;         // product id
     name: string;
-    price: number;
+    price: number; // final price after discount
+    originalPrice?: number; // original price before discount
+    discountPercentage?: number; // discount percentage (0-100)
+    discountAmount?: number; // discount amount
     qty: number;
     imageUrl?: string;
   }[];
@@ -514,6 +568,9 @@ export async function fetchAdminOrderById(id: string): Promise<AdminOrderDetail>
       product: hasKey(x, "product") ? str(x.product) : undefined,
       name: str(x.name),
       price: num(x.price),
+      originalPrice: hasKey(x, "originalPrice") && typeof x.originalPrice === "number" ? num(x.originalPrice) : undefined,
+      discountPercentage: hasKey(x, "discountPercentage") && typeof x.discountPercentage === "number" ? num(x.discountPercentage) : undefined,
+      discountAmount: hasKey(x, "discountAmount") && typeof x.discountAmount === "number" ? num(x.discountAmount) : undefined,
       qty: num(x.qty),
       imageUrl: optStr(x, "imageUrl"),
     };

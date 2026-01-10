@@ -265,7 +265,11 @@
     display:block;
     cursor:default;
     position: relative;
-    z-index: 1000;
+    z-index: 1000; /* High z-index for first strip (inside fixed navbar) */
+  }
+  /* Second offer strip (after hero) - override to stay below menus via inline style */
+  .offer-strip[style*="z-index"] {
+    z-index: 0 !important; /* Force low z-index when inline style sets z-index */
   }
   .offer-strip:hover .offer-strip-inner{
     animation-play-state: paused;
@@ -278,6 +282,47 @@
     animation: offer-marquee var(--offer-strip-speed, 20s) linear infinite;
   }
   @keyframes offer-marquee{
+    0%{ transform: translateX(0); }
+    100%{ transform: translateX(-50%); }
+  }
+
+  /* === Navbar menu z-index classes === */
+  .z-menu-overlay {
+    z-index: 51; /* Above navbar (z-50), below drawers (z-60-70) */
+  }
+  .z-menu-curtain {
+    z-index: 52; /* Above navbar overlay, below drawers */
+  }
+
+  /* === Ingredients strip (below hero) === */
+  :root {
+    --ingredients-strip-speed: 20s;
+  }
+  
+  .ingredients-strip{
+    width:100%;
+    overflow:hidden;
+    background:var(--wnr-berry);
+    color:#fff;
+    font-size:0.9rem;
+    letter-spacing:.06em;
+    white-space:nowrap;
+    display:block;
+    cursor:default;
+    position: relative;
+    z-index: 100;
+  }
+  .ingredients-strip:hover .ingredients-strip-inner{
+    animation-play-state: paused;
+  }
+  .ingredients-strip-inner{
+    display:inline-flex;
+    padding:.6rem 2rem;
+    text-transform:uppercase;
+    text-align:center;
+    animation: ingredients-marquee var(--ingredients-strip-speed, 20s) linear infinite;
+  }
+  @keyframes ingredients-marquee{
     0%{ transform: translateX(0); }
     100%{ transform: translateX(-50%); }
   }

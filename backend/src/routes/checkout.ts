@@ -7,6 +7,7 @@ import Cart from "../modules/cart/Cart";
 import { Product } from "../modules/catalog/products/product.model";
 import OrderModel from "../modules/orders/Order";
 import { requireUser } from "../middlewares/userAuth";
+import { SettingsModel } from "../modules/settings/settings.model";
 
 const router = Router();
 
@@ -30,7 +31,19 @@ router.post("/", async (req, res) => {
 
     const userId = req.userId!; // ✅ Set by requireUser middleware
 
-    const shipping = Number.isFinite(+req.body?.shipping) ? Number(req.body.shipping) : 0;
+    // Check if free delivery is enabled in settings
+    let settings = await SettingsModel.findOne();
+    if (!settings) {
+      settings = await SettingsModel.create({});
+    }
+    const freeDelivery = settings.freeDelivery === true;
+    
+    // If free delivery is enabled, set shipping to 0; otherwise use the provided value
+    const shipping = freeDelivery ? 0 : (Number.isFinite(+req.body?.shipping) ? Number(req.body.shipping) : 0);
+    
+    if (freeDelivery) {
+      console.log("[checkout] Free delivery enabled, setting shipping to 0");
+    }
 
     // ✅ address is required by schema
     const address = req.body?.address || {};
@@ -47,24 +60,38 @@ router.post("/", async (req, res) => {
     // load cart
     const cart = await Cart.findOne({ user: userId }).populate({
       path: "items.product",
-      select: "name price stock status",
+      select: "name price stock status discountPercentage",
     });
 
     if (!cart || cart.items.length === 0) {
       return res.status(400).json({ message: "Cart is empty" });
     }
 
-    // validate items + compute subtotal
+    // validate items + compute subtotal with discounts
     let subtotal = 0;
     for (const it of cart.items as any[]) {
       const p = it.product;
       if (!p) return res.status(400).json({ message: "A product in your cart is missing" });
       if (p.status !== "active") return res.status(409).json({ message: `Product ${p._id} is inactive` });
       if (typeof p.price !== "number") return res.status(422).json({ message: `Product ${p._id} price missing` });
-      if (typeof p.stock === "number" && p.stock < it.qty) {
-        return res.status(409).json({ message: `Insufficient stock for ${p._id}` });
+      // Check if product is out of stock
+      if (typeof p.stock === "number" && p.stock === 0) {
+        return res.status(409).json({ message: `Product ${p._id} is out of stock` });
       }
-      subtotal += p.price * it.qty;
+      if (typeof p.stock === "number" && p.stock < it.qty) {
+        return res.status(409).json({ message: `Insufficient stock for ${p._id}. Available: ${p.stock}, Requested: ${it.qty}` });
+      }
+      
+      // Always use product's current discount. If product no longer has discount, don't apply stored discount from add time
+      const discountPercentage = (typeof p.discountPercentage === 'number' && p.discountPercentage > 0)
+        ? p.discountPercentage
+        : undefined;
+      const originalPrice = p.price;
+      const finalPrice = typeof discountPercentage === 'number' && discountPercentage > 0
+        ? Math.round(originalPrice * (1 - discountPercentage / 100))
+        : originalPrice;
+      
+      subtotal += finalPrice * it.qty;
     }
 
     const total = Math.max(0, subtotal + shipping);
@@ -80,15 +107,33 @@ router.post("/", async (req, res) => {
       }
     }
 
-    // ✅ Create order with a valid addressSnapshot
+    // ✅ Create order with a valid addressSnapshot and discount information
     const orderDoc = new OrderModel({
       user: userId,
-      items: cart.items.map((it: any) => ({
-        product: it.product._id,
-        name: it.product.name,
-        price: it.product.price,
-        qty: it.qty,
-      })),
+      items: cart.items.map((it: any) => {
+        const p = it.product;
+        // Always use product's current discount. If product no longer has discount, don't apply stored discount from add time
+        const discountPercentage = (typeof p.discountPercentage === 'number' && p.discountPercentage > 0)
+          ? p.discountPercentage
+          : undefined;
+        const originalPrice = p.price;
+        const finalPrice = typeof discountPercentage === 'number' && discountPercentage > 0
+          ? Math.round(originalPrice * (1 - discountPercentage / 100))
+          : originalPrice;
+        const discountAmount = originalPrice - finalPrice;
+        
+        return {
+          product: p._id,
+          name: p.name,
+          price: finalPrice, // final price after discount
+          ...(typeof discountPercentage === 'number' && discountPercentage > 0 ? {
+            originalPrice,
+            discountPercentage,
+            discountAmount,
+          } : {}),
+          qty: it.qty,
+        };
+      }),
       subtotal,
       shipping,
       total,

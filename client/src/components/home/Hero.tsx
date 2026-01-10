@@ -62,17 +62,17 @@ const guteaseTop = fromUrl("https://res.cloudinary.com/dob666wa0/image/upload/v1
 const guteaseBottom = fromUrl("https://res.cloudinary.com/dob666wa0/image/upload/v1761767119/Gutease_BOTTOM_azsknk.jpg");
 
 /* ========= DESKTOP & MOBILE BANNERS ========= */
-const bannerPower = "https://res.cloudinary.com/dob666wa0/image/upload/v1761766962/Power_Brew_Banner_xznw8m.png";
-const bannerDigestive = "https://res.cloudinary.com/dob666wa0/image/upload/v1761766963/Digestive_Bew_Banner_uqt2zg.png";
-const bannerSugarwise = "https://res.cloudinary.com/dob666wa0/image/upload/v1761766962/Sugarwise_Brew_Banner_vcohlf.png";
-const bannerSlim = "https://res.cloudinary.com/dob666wa0/image/upload/v1761766962/Slim_Brew_Banner_mzhxcv.png";
-const bannerGutease = "https://res.cloudinary.com/dob666wa0/image/upload/v1761766963/Gutease_Bew_Banner_wnbd44.png";
+const bannerPower = "https://res.cloudinary.com/dob666wa0/image/upload/v1767940705/Power_Banner_ngz7p9.png";
+const bannerDigestive = "https://res.cloudinary.com/dob666wa0/image/upload/v1767940705/Digestive_Banner_fpztqs.png";
+const bannerSugarwise = "https://res.cloudinary.com/dob666wa0/image/upload/v1767940706/Sugarwise_Banner_ypscfh.png";
+const bannerSlim = "https://res.cloudinary.com/dob666wa0/image/upload/v1767940706/Slim_Banner_efgcdp.png";
+const bannerGutease = "https://res.cloudinary.com/dob666wa0/image/upload/v1767940706/Gutease_Banner_f1pzwf.png";
 
-const bannerPowerMobile = "https://res.cloudinary.com/dob666wa0/image/upload/v1761766962/Power_Brew_Mobile_Banner_rrmo6y.png";
-const bannerDigestiveMobile = "https://res.cloudinary.com/dob666wa0/image/upload/v1761766963/Digestive_Brew_Mobile_Banner_syno19.png";
-const bannerSugarwiseMobile = "https://res.cloudinary.com/dob666wa0/image/upload/v1761766962/Sugarwise_Brew_Mobile_Banner_mtucls.png";
-const bannerSlimMobile = "https://res.cloudinary.com/dob666wa0/image/upload/v1761766962/Slim_Brew_Mobile_Banner_kjl8x8.png";
-const bannerGuteaseMobile = "https://res.cloudinary.com/dob666wa0/image/upload/v1761766962/Gutease_Brew_Mobile_Banner_x5pox8.png";
+const bannerPowerMobile = "https://res.cloudinary.com/dob666wa0/image/upload/v1767940706/Power_Banner_mobile_ln2vy4.png";
+const bannerDigestiveMobile = "https://res.cloudinary.com/dob666wa0/image/upload/v1767940706/Digestive_Banner_mobile_o2nj8e.png";
+const bannerSugarwiseMobile = "https://res.cloudinary.com/dob666wa0/image/upload/v1767940706/Sugarwise_Banner_mobile_wa5irf.png";
+const bannerSlimMobile = "https://res.cloudinary.com/dob666wa0/image/upload/v1767940706/Slim_Banner_mobile_aenmjz.png";
+const bannerGuteaseMobile = "https://res.cloudinary.com/dob666wa0/image/upload/v1767940706/Gutease_Banner_mobile_ugjm4p.png";
 
 /* ========= TYPES ========= */
 type Faces = { front: string; back: string; left: string; right: string; top: string; bottom: string };
@@ -104,6 +104,47 @@ const PRODUCTS: ProductConf[] = [
 ];
 
 const toSrc = (x: string | StaticImageData) => (typeof x === "string" ? x : x.src);
+
+/* ========= BANNER TEXT ========= */
+type BannerText = {
+  topLine: string;
+  mainHeading: string;
+  subheading: string;
+  description: string;
+};
+
+const BANNER_TEXTS: Record<ProductId, BannerText> = {
+  digestive: {
+    topLine: "It's not Green Tea",
+    mainHeading: "IT'S  HERBAL BREW",
+    subheading: "A tangy ritual for happy digestion.",
+    description: "A tangy blend designed with salts to improve digestion and reduce post meal sluggishness and heaviness",
+  },
+  gutease: {
+    topLine: "Comforting herbal brew",
+    mainHeading: "FOR HEALTHY GOOD HABIT  ",
+    subheading: "Comfort from within.",
+    description: "A natural blend of herbs to improve gut health and enhance appetite and support lightness after meals.",
+  },
+  slim: {
+    topLine: "Not a green Tea",
+    mainHeading: "A BALANCED HERBAL BREW",
+    subheading: "Sip into balance.",
+    description: "A healthy blend crafted with 15 herbs to naturally manage water retention, to reduce swelling and assist in healthy fat burn and boosting confidence.",
+  },
+  sugarwise: {
+    topLine: "Mindful herbal brew",
+    mainHeading: "A GOOD HABIT ",
+    subheading: "Balance, naturally.",
+    description: "A brew crafted with natural ingredients to support healthy blood sugar balance, enhance metabolism and ease diabetic wellness.",
+  },
+  power: {
+    topLine: "Energy herbal brew",
+    mainHeading: "FOR HEALTHY GOOD HABIT",
+    subheading: "Strength rooted in nature.",
+    description: "A premium brew designed to naturally boost energy levels and improve focus and reduce fatigue.",
+  },
+};
 
 /* ========= FLOATING TITLES ========= */
 const FLOATING_TITLES = [
@@ -252,7 +293,7 @@ export default function Hero() {
 
   return (
     <section
-      className="relative min-h-[80vh] md:h-[80vh] text-white overflow-hidden"
+      className="relative min-h-[60vh] md:h-[80vh] text-white overflow-hidden"
       tabIndex={0}
       onKeyDown={onKeyDown}
       onPointerDown={onHeroPointerDown}
@@ -292,7 +333,7 @@ export default function Hero() {
           alt={`${current.name} banner background`}
           fill
           priority
-          sizes="(min-width:1024px) 90vw, 100vw"
+          sizes="(min-width:1024px) 100vw, 100vw"
           fetchPriority="high"
           className="hidden md:block object-cover object-center"
         />
@@ -302,7 +343,7 @@ export default function Hero() {
           alt={`${current.name} banner background`}
           fill
           priority
-          sizes="100vw"
+          sizes="(max-width: 768px) 100vw, 100vw"
           fetchPriority="high"
           className="md:hidden object-cover object-center"
         />
@@ -311,16 +352,16 @@ export default function Hero() {
       {/* FLOATING TEXT */}
       <div className="absolute inset-0 z-10 flex items-start justify-center pt-30 md:pt-30 lg:pt-30 pointer-events-none">
         <div className="wnr-container w-full flex justify-center">
-          <h1 className="text-white text-4xl md:text-6xl lg:text-7xl font-bold text-center px-4 drop-shadow-[0_4px_12px_rgba(0,0,0,0.5)]">
+          {/* <h1 className="text-white text-4xl md:text-6xl lg:text-7xl font-bold text-center px-4 drop-shadow-[0_4px_12px_rgba(0,0,0,0.5)]">
             {currentTitle}
-          </h1>
+          </h1> */}
         </div>
       </div>
 
       {/* CENTER CONTENT */}
-      <div className="relative z-10 wnr-container flex items-center justify-center min-h-[inherit] pt-20 md:pt-6">
+      <div className="relative z-10 wnr-container flex flex-col md:flex-row items-center justify-center md:justify-start min-h-[inherit] pt-8 md:pt-2 md:-mt-4 gap-0">
         <div
-          className={`relative w-full max-w-[1020px] max-h-[800px] overflow-visible select-none ${
+          className={`relative w-full max-w-[1020px] max-h-[800px] overflow-visible select-none md:-ml-60 lg:-ml-70 xl:-ml-80 ${
             grabbing ? "cursor-grabbing" : "cursor-grab"
           }`}
           onPointerEnter={() => {
@@ -395,7 +436,76 @@ export default function Hero() {
 )}
 
         </div>
+
+        {/* MOBILE TEXT - Below 3D box */}
+        <div className="w-full pb-6 text-center text-white md:hidden -mt-2">
+          {(() => {
+            const bannerText = BANNER_TEXTS[current.id];
+            const isSlim = current.id === "slim";
+            return (
+              <>
+                {/* Decorative squares */}
+                <div className="flex justify-center mb-0.5">
+                  <div className="relative w-4 h-4">
+                    <span className={`absolute w-2 h-2 ${isSlim ? "bg-[var(--wnr-berry)]/40" : "bg-white/40"} left-0 bottom-0`}></span>
+                    <span className={`absolute w-2 h-2 ${isSlim ? "bg-[var(--wnr-berry)]/40" : "bg-white/40"} right-0 top-0`}></span>
+                  </div>
+                </div>
+
+                {/* Eyebrow */}
+                <p className={`!text-[24px] font-medium tracking-wide leading-none ${isSlim ? "text-[var(--wnr-berry)] opacity-100" : "text-white opacity-90"}`}>
+                  {bannerText.topLine}
+                </p>
+
+                {/* Main heading */}
+                <h1 className={`mt-0 w-full !text-[24px] font-medium tracking-wide leading-[0.6] whitespace-nowrap ${isSlim ? "text-[var(--wnr-berry)]" : "text-white"}`}>
+                  {bannerText.mainHeading}
+                </h1>
+
+                {/* Subheading */}
+                <p className={`mt-0 !text-[18px] font-medium leading-none ${isSlim ? "text-[var(--wnr-berry)]" : "text-white"}`}>
+                  {bannerText.subheading}
+                </p>
+
+                {/* Description */}
+                <p className={`mt-0 !text-[10px] leading-tight line-clamp-3 ${isSlim ? "text-[var(--wnr-berry)] opacity-100" : "text-white opacity-90"} max-w-[160px] mx-auto`}>
+                  {bannerText.description}
+                </p>
+              </>
+            );
+          })()}
+        </div>
       </div>
+
+        {/* DESKTOP TEXT OVERLAY */}
+        <div className="absolute inset-0 z-10 pointer-events-none hidden md:flex wnr-container h-full items-center justify-end px-4">
+          <div className="max-w-[600px] w-full text-right">
+            {(() => {
+              const bannerText = BANNER_TEXTS[current.id];
+              const isSlim = current.id === "slim";
+              const textColorClass = isSlim ? "text-[var(--wnr-berry)]" : "text-white";
+              return (
+                <>
+                  <p className={`!text-[48px] tracking-wide leading-none font-medium ${isSlim ? "opacity-100" : "opacity-90"} ${textColorClass}`}>
+                    {bannerText.topLine}
+                  </p>
+
+                  <h1 className={`mt-0 !text-[52px] font-medium tracking-wide leading-[0.9] whitespace-nowrap ${textColorClass}`}>
+                    {bannerText.mainHeading}
+                  </h1>
+
+                  <p className={`mt-1 !text-[38px] font-medium leading-none ${textColorClass}`}>
+                    {bannerText.subheading}
+                  </p>
+
+                  <p className={`-mt-2 !text-[19px] leading-[0.8] ${isSlim ? "opacity-100" : "opacity-90"} max-w-md ml-auto ${textColorClass}`}>
+                    {bannerText.description}
+                  </p>
+                </>
+              );
+            })()}
+          </div>
+        </div>
     </section>
   );
 }

@@ -1,5 +1,5 @@
 # Backend gitignore
 .env
 dist/
-logs/
+/logs/
 node_modules/

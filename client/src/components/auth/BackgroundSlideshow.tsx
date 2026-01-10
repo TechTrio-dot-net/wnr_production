@@ -5,11 +5,11 @@ import { useEffect, useMemo, useState } from "react";
 type BgSlide = { id: string; src: string };
 
 const BG_IMAGES: string[] = [
-  "https://res.cloudinary.com/dob666wa0/image/upload/v1761473438/IMG_0756_TIF-min_epdnih.jpg",
-  "https://res.cloudinary.com/dob666wa0/image/upload/v1761473438/IMG_0757_TIF-min_vfvewo.jpg",
-  "https://res.cloudinary.com/dob666wa0/image/upload/v1761473438/IMG_0754_TIF-min_rbasz9.jpg",
-  "https://res.cloudinary.com/dob666wa0/image/upload/v1761473437/IMG_0755_TIF-min_fqylth.jpg",
-  "https://res.cloudinary.com/dob666wa0/image/upload/v1761473437/IMG_0753_TIF-min_kinum4.jpg",
+  "/images/login/carousel-1.jpg",
+  "/images/login/carousel-2.jpg",
+  "/images/login/carousel-3.jpg",
+  "/images/login/carousel-4.jpg",
+  "/images/login/carousel-5.jpg",
 ];
 
 export default function BackgroundSlideshow() {

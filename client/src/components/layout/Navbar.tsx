@@ -410,13 +410,15 @@ export default function Navbar() {
               {/* Logo */}
               <div className="flex items-center justify-center">
                 <Link href="/" className="flex items-center" onClick={closeAnd()}>
-                  <Image
-                    src="/images/wild-root-logo-white.png"
-                    alt="Wild n' Root"
-                    width={60}
-                    height={60}
-                    priority
-                  />
+                  <div className="relative h-[60px] w-[60px]">
+                    <Image
+                      src="/images/wild-root-logo-white.png"
+                      alt="Wild n' Root"
+                      fill
+                      priority
+                      className="object-contain"
+                    />
+                  </div>
                   <span className="sr-only">Wild n Root</span>
                 </Link>
               </div>
@@ -453,13 +455,15 @@ export default function Navbar() {
             {/* ======= DESKTOP BAR ======= */}
             <div className="hidden md:flex h-16 items-center justify-between text-white">
               <Link href="/" className="flex items-center gap-3" onClick={closeAnd()}>
-                <Image
-                  src="/images/wild-root-logo-white.png"
-                  alt="Wild n Root"
-                  width={100}
-                  height={100}
-                  priority
-                />
+                <div className="relative h-[100px] w-[100px]">
+                  <Image
+                    src="/images/wild-root-logo-white.png"
+                    alt="Wild n Root"
+                    fill
+                    priority
+                    className="object-contain"
+                  />
+                </div>
                 <span className="sr-only">Wild n' Root</span>
               </Link>
 
@@ -510,14 +514,14 @@ export default function Navbar() {
         {/* Overlay */}
         <div
           onClick={() => setOpen(false)}
-          className={`fixed inset-0 backdrop-blur-[1px] transition-opacity duration-300 ${
+          className={`fixed inset-0 backdrop-blur-[1px] transition-opacity duration-300 z-menu-overlay ${
             open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
           }`}
         />
 
         {/* ======= MOBILE CURTAIN ======= */}
         <aside
-          className={`md:hidden fixed top-0 left-0 w-screen h-screen bg-[var(--wnr-berry)] text-white transform transition-transform duration-500 ease-out ${
+          className={`md:hidden fixed top-0 left-0 w-screen h-screen bg-[var(--wnr-berry)] text-white transform transition-transform duration-500 ease-out z-menu-curtain ${
             open ? "translate-y-0" : "-translate-y-full"
           }`}
           aria-hidden={!open}
@@ -601,7 +605,7 @@ export default function Navbar() {
         {/* ======= DESKTOP RIGHT DRAWER ======= */}
         <aside
           ref={desktopDrawerRef}
-          className={`hidden md:block fixed top-0 right-0 h-screen w-[35vw] max-w-md bg-white text-[var(--wnr-text)] shadow-2xl transform transition-transform duration-500 ${
+          className={`hidden md:block fixed top-0 right-0 h-screen w-[35vw] max-w-md bg-white text-[var(--wnr-text)] shadow-2xl transform transition-transform duration-500 z-menu-curtain ${
             open ? "translate-x-0" : "translate-x-full"
           }`}
         >

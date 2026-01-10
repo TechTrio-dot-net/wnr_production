@@ -16,7 +16,7 @@ import {
   Check,
   Package
 } from "lucide-react";
-import { fetchProducts, deleteProduct, type Product } from "@/lib/api";
+import { fetchProducts, deleteProduct, updateProduct, type Product } from "@/lib/api";
 import { getCategories } from "@/lib/api";
 import { toast } from "sonner";
 import { logger } from "@/lib/logger";
@@ -51,6 +51,7 @@ type ProductLike = Omit<Product, "category" | "images" | "id"> & {
   description?: string;
   descriptionPoints?: string[];
   eshopboxProductId?: string;
+  discountPercentage?: number; // 0-100, e.g., 10 for 10% off
 };
 
 type NewProductState = {
@@ -105,6 +106,107 @@ async function readError(res: Response): Promise<string> {
   } catch {
     return `${res.status}`;
   }
+}
+
+/* ============================== Display Order Inline Editor =============================== */
+function DisplayOrderCell({
+  productId,
+  currentOrder,
+  products,
+  setProducts,
+}: {
+  productId: string;
+  currentOrder: number;
+  products: ProductLike[];
+  setProducts: (products: ProductLike[]) => void;
+}) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState<string>("");
+  const [saving, setSaving] = useState<string | null>(null);
+
+  const startEdit = () => {
+    setEditingId(productId);
+    setEditValue(String(currentOrder));
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditValue("");
+  };
+
+  const saveOrder = async () => {
+    try {
+      setSaving(productId);
+      const numValue = Number(editValue);
+      if (isNaN(numValue)) {
+        toast.error("Please enter a valid number");
+        return;
+      }
+
+      await updateProduct(productId, { displayOrder: numValue });
+      toast.success("Display order updated");
+      
+      // Reload products to reflect the new order
+      const data = await fetchProducts();
+      setProducts(data as ProductLike[]);
+      
+      setEditingId(null);
+      setEditValue("");
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to update display order");
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  if (editingId === productId) {
+    return (
+      <div className="flex items-center gap-1">
+        <input
+          type="number"
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              saveOrder();
+            } else if (e.key === "Escape") {
+              cancelEdit();
+            }
+          }}
+          className="w-20 px-2 py-1 text-xs border border-border rounded focus:outline-none focus:ring-2 focus:ring-primary"
+          autoFocus
+          disabled={saving === productId}
+        />
+        <button
+          onClick={saveOrder}
+          disabled={saving === productId}
+          className="p-1 text-green-600 hover:bg-green-50 rounded disabled:opacity-50"
+          title="Save"
+        >
+          <Check className="w-3 h-3" />
+        </button>
+        <button
+          onClick={cancelEdit}
+          disabled={saving === productId}
+          className="p-1 text-red-600 hover:bg-red-50 rounded disabled:opacity-50"
+          title="Cancel"
+        >
+          <X className="w-3 h-3" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="flex items-center gap-2 group cursor-pointer"
+      onClick={startEdit}
+      title="Click to edit display order"
+    >
+      <span className="text-muted-foreground font-mono text-xs">{currentOrder}</span>
+      <Edit className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" />
+    </div>
+  );
 }
 
 export default function ProductsPage() {
@@ -370,16 +472,63 @@ export default function ProductsPage() {
 
   if (loading) {
     return (
-      <div className="space-y-6 animate-pulse">
+      <div className="space-y-6">
         <div className="flex justify-between items-center">
-          <div className="h-8 w-48 bg-muted rounded-lg" />
-          <div className="h-10 w-32 bg-muted rounded-lg" />
+          <div className="h-8 w-48 bg-muted rounded-lg animate-pulse" />
+          <div className="h-10 w-32 bg-muted rounded-lg animate-pulse" />
         </div>
-        <div className="h-16 bg-muted rounded-xl" />
-        <div className="space-y-4">
-          {[...Array(5)].map((_, i) => (
-            <div key={i} className="h-20 bg-muted rounded-xl" />
-          ))}
+        <div className="h-16 bg-muted rounded-xl animate-pulse" />
+        <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-muted/50 border-b border-border">
+                <tr>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    <div className="h-4 w-24 bg-muted rounded animate-pulse" />
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    <div className="h-4 w-20 bg-muted rounded animate-pulse" />
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    <div className="h-4 w-16 bg-muted rounded animate-pulse" />
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    <div className="h-4 w-24 bg-muted rounded animate-pulse" />
+                  </th>
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    <div className="h-4 w-20 bg-muted rounded animate-pulse ml-auto" />
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <tr key={i} className="hover:bg-muted/30 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 bg-gradient-to-br from-orange-200 to-orange-300 rounded-lg animate-pulse" />
+                        <div className="h-5 w-32 bg-muted rounded animate-pulse" />
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="h-5 w-24 bg-muted rounded animate-pulse" />
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="h-5 w-16 bg-muted rounded animate-pulse" />
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="h-6 w-20 bg-gradient-to-br from-green-200 to-green-300 rounded-full animate-pulse" />
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center justify-end gap-2">
+                        <div className="h-8 w-8 bg-muted rounded-lg animate-pulse" />
+                        <div className="h-8 w-8 bg-muted rounded-lg animate-pulse" />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     );
@@ -456,6 +605,7 @@ export default function ProductsPage() {
                 <th className="px-6 py-4 text-left font-semibold text-muted-foreground uppercase tracking-wider">Eshopbox ID</th>
                 <th className="px-6 py-4 text-left font-semibold text-muted-foreground uppercase tracking-wider">Price</th>
                 <th className="px-6 py-4 text-left font-semibold text-muted-foreground uppercase tracking-wider">Stock</th>
+                <th className="px-6 py-4 text-left font-semibold text-muted-foreground uppercase tracking-wider">Display Order</th>
                 <th className="px-6 py-4 text-left font-semibold text-muted-foreground uppercase tracking-wider">Status</th>
                 <th className="px-6 py-4 text-right font-semibold text-muted-foreground uppercase tracking-wider">Actions</th>
               </tr>
@@ -463,7 +613,7 @@ export default function ProductsPage() {
             <tbody className="divide-y divide-border">
               {filteredProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-muted-foreground">
+                  <td colSpan={7} className="py-12 text-center text-muted-foreground">
                     <div className="flex flex-col items-center justify-center">
                       <Package className="w-12 h-12 mb-4 opacity-20" />
                       <p>No products found</p>
@@ -493,7 +643,14 @@ export default function ProductsPage() {
                               </div>
                             )}
                           </div>
-                          <span className="font-medium text-foreground">{p.name}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-foreground">{p.name}</span>
+                            {typeof p.discountPercentage === 'number' && p.discountPercentage > 0 && (
+                              <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-red-500 text-white">
+                                {p.discountPercentage}% OFF
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </td>
                       <td className="px-6 py-4 text-muted-foreground">
@@ -503,7 +660,18 @@ export default function ProductsPage() {
                         {p.eshopboxProductId || "—"}
                       </td>
                       <td className="px-6 py-4 font-medium">
-                        ₹{Number(p.price || 0).toLocaleString()}
+                        {p.discountPercentage && p.discountPercentage > 0 ? (
+                          <div className="flex items-center gap-2">
+                            <span className="text-muted-foreground line-through text-sm">
+                              ₹{Number(p.price || 0).toLocaleString()}
+                            </span>
+                            <span className="text-foreground">
+                              ₹{Math.round(Number(p.price || 0) * (1 - p.discountPercentage / 100)).toLocaleString()}
+                            </span>
+                          </div>
+                        ) : (
+                          <span>₹{Number(p.price || 0).toLocaleString()}</span>
+                        )}
                       </td>
                       <td className="px-6 py-4">
                         <span className={`
@@ -512,6 +680,14 @@ export default function ProductsPage() {
                         `}>
                           {p.stock} in stock
                         </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <DisplayOrderCell
+                          productId={pid}
+                          currentOrder={p.displayOrder ?? 9999}
+                          products={products}
+                          setProducts={setProducts}
+                        />
                       </td>
                       <td className="px-6 py-4">
                         <span className={`

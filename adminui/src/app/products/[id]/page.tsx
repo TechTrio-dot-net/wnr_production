@@ -12,6 +12,7 @@ import {
 import { toast } from "sonner";
 import { IoClose } from "react-icons/io5";
 import { logger } from "@/lib/logger";
+import imageCompression from "browser-image-compression";
 
 /** Normalize API base; allow fallback to Next.js rewrite (/api) */
 const RAW_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
@@ -102,6 +103,10 @@ export default function UpsertProductPage() {
   const [description, setDescription] = useState<string>("");
   // We edit descriptionPoints as one textarea (one point per line)
   const [descriptionPointsText, setDescriptionPointsText] = useState<string>("");
+  // Discount percentage (0-100)
+  const [discountPercentage, setDiscountPercentage] = useState<number | undefined>(undefined);
+  // Display Order (lower numbers appear first)
+  const [displayOrder, setDisplayOrder] = useState<number | undefined>(undefined);
 
   // Existing images / hover (from server)
   const [existingImages, setExistingImages] = useState<string[]>([]);
@@ -114,9 +119,13 @@ export default function UpsertProductPage() {
   // Replacement hover file (optional)
   const [hoverFile, setHoverFile] = useState<File | null>(null);
 
-  // Previews for replacement gallery
+  // Previews for replacement gallery - detect if file is video
   const previews = useMemo(
-    () => selectedFiles.map((f) => URL.createObjectURL(f)),
+    () => selectedFiles.map((f) => ({
+      url: URL.createObjectURL(f),
+      isVideo: f.type.startsWith("video/"),
+      name: f.name,
+    })),
     [selectedFiles]
   );
   // Preview for replacement hover
@@ -127,7 +136,7 @@ export default function UpsertProductPage() {
 
   useEffect(() => {
     return () => {
-      previews.forEach((u) => URL.revokeObjectURL(u));
+      previews.forEach((p) => URL.revokeObjectURL(p.url));
       if (hoverPreview) URL.revokeObjectURL(hoverPreview);
     };
   }, [previews, hoverPreview]);
@@ -151,22 +160,26 @@ export default function UpsertProductPage() {
           setPrice(prod.price);
           setCategory(extractCategoryId((prod as unknown as { category?: unknown })?.category));
           setStock(prod.stock);
-          setStatus(toStatus((prod as unknown as { status?: string })?.status ?? "active"));
+          setStatus(toStatus(prod.status ?? "active"));
 
           // eshopbox id
-          setEshopboxProductId((typeof prod === "object" && prod !== null && "eshopboxProductId" in prod ? String((prod as { eshopboxProductId?: unknown }).eshopboxProductId) : "") ?? "");
+          setEshopboxProductId(prod.eshopboxProductId ?? "");
 
-          // NEW text fields (safe optional)
-          const ptx = prod as unknown as ProductLikeWithHoverAndText;
-          setAbout(typeof ptx.about === "string" ? ptx.about : "");
-          setIngredients(typeof ptx.ingredients === "string" ? ptx.ingredients : "");
-          setDescription(typeof ptx.description === "string" ? ptx.description : "");
+          // Text fields - now properly typed from Product interface
+          setAbout(prod.about ?? "");
+          setIngredients(prod.ingredients ?? "");
+          setDescription(prod.description ?? "");
           setDescriptionPointsText(
-            Array.isArray(ptx.descriptionPoints) ? ptx.descriptionPoints.join("\n") : ""
+            Array.isArray(prod.descriptionPoints) ? prod.descriptionPoints.join("\n") : ""
           );
+          setDiscountPercentage(prod.discountPercentage);
+          setDisplayOrder(prod.displayOrder);
 
           // lib/api normalizes images to string[] (your api.ts does this)
           setExistingImages(Array.isArray(prod.images) ? prod.images : []);
+          
+          // Get hover image from product (it's stored as hoverImage in the Product interface)
+          const ptx = prod as unknown as ProductLikeWithHoverAndText;
           setExistingHoverUrl(getHoverUrl(ptx));
         } else {
           // default category to first if available (prevents invalid id)
@@ -184,11 +197,110 @@ export default function UpsertProductPage() {
 
   /* ----------------------------- file handlers ----------------------------- */
 
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+  async function compressImage(file: File): Promise<File> {
+    // Only compress if file is larger than 8MB
+    const MAX_SIZE = 8 * 1024 * 1024; // 8MB
+    if (file.size <= MAX_SIZE) {
+      return file; // No need to compress
+    }
+    
+    // Validate file type before compression
+    if (!file.type || !file.type.startsWith("image/")) {
+      console.warn("Invalid file type for compression:", file.type);
+      return file;
+    }
+    
+    const options = {
+      maxSizeMB: 8, // Target 8MB (under Cloudinary's 10MB limit)
+      maxWidthOrHeight: 1920, // Max dimension
+      useWebWorker: true,
+      fileType: file.type,
+      preserveExif: false, // Don't preserve EXIF to reduce size
+    };
+    
+    try {
+      const compressedBlob = await imageCompression(file, options);
+      
+      // Validate the compressed blob
+      if (!compressedBlob || compressedBlob.size === 0) {
+        console.warn("Compression resulted in empty file, using original");
+        return file;
+      }
+      
+      // Create a new File object with the correct name and type
+      const compressedFile = new File([compressedBlob], file.name, {
+        type: file.type,
+        lastModified: Date.now(),
+      });
+      
+      // Ensure the file has valid properties
+      if (!compressedFile.type || compressedFile.size === 0) {
+        console.warn("Compressed file is invalid, using original");
+        return file;
+      }
+      
+      return compressedFile;
+    } catch (error) {
+      console.error("Compression failed:", error);
+      // If compression fails, return original file
+      return file;
+    }
+  }
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-    setSelectedFiles((prev) => [...prev, ...Array.from(files)]);
-    e.currentTarget.value = "";
+    
+    // Filter to only accept images and videos
+    const validFiles = Array.from(files).filter((file) => {
+      const type = file.type;
+      return type.startsWith("image/") || type.startsWith("video/");
+    });
+    
+    if (validFiles.length !== files.length) {
+      toast.error("Only images and videos are allowed.");
+    }
+    
+    // Process files: compress images, check video sizes
+    const processedFiles: File[] = [];
+    
+    for (const file of validFiles) {
+      if (file.type.startsWith("image/")) {
+        // Compress images
+        toast.loading(`Compressing ${file.name}...`, { id: `compress-${file.name}` });
+        try {
+          const compressed = await compressImage(file);
+          toast.success(`${file.name} compressed`, { id: `compress-${file.name}` });
+          processedFiles.push(compressed);
+        } catch {
+          toast.error(`Failed to compress ${file.name}`, { id: `compress-${file.name}` });
+          // Add original if compression fails
+          processedFiles.push(file);
+        }
+      } else if (file.type.startsWith("video/")) {
+        // Check video size (10MB limit for Cloudinary free tier)
+        const MAX_VIDEO_SIZE = 10 * 1024 * 1024; // 10MB
+        if (file.size > MAX_VIDEO_SIZE) {
+          toast.warning(`${file.name} is ${(file.size / 1024 / 1024).toFixed(2)}MB. Videos over 10MB may fail to upload. Consider compressing the video first.`);
+        }
+        processedFiles.push(file);
+      }
+    }
+    
+    setSelectedFiles((prev) => {
+      const combined = [...prev, ...processedFiles];
+      // Limit to 7 total files
+      if (combined.length > 7) {
+        toast.error("Maximum 7 files allowed. Only the first 7 will be kept.");
+        return combined.slice(0, 7);
+      }
+      return combined;
+    });
+    
+    // Reset input value safely
+    if (e.currentTarget) {
+      e.currentTarget.value = "";
+    }
   }
   function removeSelected(idx: number) {
     setSelectedFiles((prev) => prev.filter((_, i) => i !== idx));
@@ -203,12 +315,30 @@ export default function UpsertProductPage() {
     });
   }
 
-  function handleHoverChange(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleHoverChange(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     if (!f) return;
+    
+    // Compress if it's an image
+    let processedFile = f;
+    if (f.type.startsWith("image/")) {
+      toast.loading(`Compressing hover image...`, { id: "compress-hover" });
+      try {
+        processedFile = await compressImage(f);
+        toast.success("Hover image compressed", { id: "compress-hover" });
+      } catch {
+        toast.error("Failed to compress hover image", { id: "compress-hover" });
+        // Use original if compression fails
+      }
+    }
+    
     if (hoverPreview) URL.revokeObjectURL(hoverPreview);
-    setHoverFile(f);
-    e.currentTarget.value = "";
+    setHoverFile(processedFile);
+    
+    // Reset input value safely
+    if (e.currentTarget) {
+      e.currentTarget.value = "";
+    }
   }
   function clearHoverFile() {
     if (hoverPreview) URL.revokeObjectURL(hoverPreview);
@@ -259,8 +389,8 @@ export default function UpsertProductPage() {
   /* ----------------------------- create/update ----------------------------- */
 
   async function createProductMultipart(): Promise<ApiProduct> {
-    if (selectedFiles.length < 3 || selectedFiles.length > 5) {
-      throw new Error("Please attach 3–5 images for a new product.");
+    if (selectedFiles.length < 3 || selectedFiles.length > 7) {
+      throw new Error("Please attach 3–7 images/videos for a new product.");
     }
     const fd = new FormData();
     fd.append("name", name.trim());
@@ -274,6 +404,12 @@ export default function UpsertProductPage() {
     if (about.trim()) fd.append("about", about.trim());
     if (ingredients.trim()) fd.append("ingredients", ingredients.trim());
     if (description.trim()) fd.append("description", description.trim());
+    if (discountPercentage !== undefined && discountPercentage > 0) {
+      fd.append("discountPercentage", String(discountPercentage));
+    }
+    if (displayOrder !== undefined && Number.isFinite(displayOrder)) {
+      fd.append("displayOrder", String(displayOrder));
+    }
     const pts = linesToPoints(descriptionPointsText);
     pts.forEach((p) => fd.append("descriptionPoints", p)); // multiple fields in multipart
 
@@ -291,20 +427,22 @@ export default function UpsertProductPage() {
     const hasRemovedImages = removedImageIndices.size > 0;
     const hasNewFiles = selectedFiles.length > 0 || !!hoverFile;
     
-    // If images are removed but no new files added, we need to handle it
-    if (hasRemovedImages && !hasNewFiles) {
-      const finalImageCount = keptExistingImages.length;
-      if (finalImageCount < 3 || finalImageCount > 5) {
-        throw new Error(`After removing images, you need 3–5 images total. Currently: ${finalImageCount}. Please add replacement images or restore some.`);
+    // Calculate total final image count (kept existing + new files)
+    const totalFinalCount = keptExistingImages.length + selectedFiles.length;
+    
+    // Validate total count only if we're modifying images
+    if (hasRemovedImages || hasNewFiles) {
+      if (totalFinalCount < 3 || totalFinalCount > 7) {
+        throw new Error(`You need 3–7 images/videos total. Currently: ${keptExistingImages.length} kept + ${selectedFiles.length} new = ${totalFinalCount}. Please adjust.`);
       }
     }
 
     const needsMultipart = hasNewFiles || hasRemovedImages;
 
     if (needsMultipart) {
-      // When replacing gallery, must provide the full 3–5 set.
-      if (selectedFiles.length > 0 && (selectedFiles.length < 3 || selectedFiles.length > 5)) {
-        throw new Error("When replacing images, attach 3–5 files.");
+      // Validate total count (kept + new) is 3-7
+      if (totalFinalCount < 3 || totalFinalCount > 7) {
+        throw new Error(`Total images/videos must be 3–7. Currently: ${totalFinalCount} (${keptExistingImages.length} kept + ${selectedFiles.length} new).`);
       }
       
       const fd = new FormData();
@@ -319,6 +457,12 @@ export default function UpsertProductPage() {
       fd.append("about", about.trim());
       fd.append("ingredients", ingredients.trim());
       fd.append("description", description.trim());
+      if (discountPercentage !== undefined && discountPercentage > 0) {
+        fd.append("discountPercentage", String(discountPercentage));
+      }
+      if (displayOrder !== undefined && Number.isFinite(displayOrder)) {
+        fd.append("displayOrder", String(displayOrder));
+      }
       const pts = linesToPoints(descriptionPointsText);
       // If user cleared them, still send empty to overwrite
       if (pts.length === 0) {
@@ -334,7 +478,7 @@ export default function UpsertProductPage() {
         });
       }
 
-      // Files
+      // Files - append all selected files (images and videos) as "images"
       selectedFiles.forEach((file) => fd.append("images", file));
       if (hoverFile) fd.append("hover", hoverFile);
 
@@ -360,6 +504,8 @@ export default function UpsertProductPage() {
         ingredients: ingredients.trim(),
         description: description.trim(),
         descriptionPoints: linesToPoints(descriptionPointsText),
+        ...(discountPercentage !== undefined && discountPercentage > 0 ? { discountPercentage } : {}),
+        ...(displayOrder !== undefined && Number.isFinite(displayOrder) ? { displayOrder } : {}),
       }),
     });
     if (!res.ok) throw new Error(await readError(res));
@@ -510,6 +656,41 @@ export default function UpsertProductPage() {
           </div>
         )}
 
+        {/* Product Metadata - Read Only */}
+        {!isCreate && product && (
+          <div className="mb-6 p-4 rounded-md border border-border bg-muted/30">
+            <h3 className="text-sm font-semibold text-muted-foreground mb-3">Product Information</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div>
+                <span className="text-muted-foreground">Product ID:</span>
+                <span className="ml-2 font-mono text-xs">{product.id}</span>
+              </div>
+              {product.createdAt && (
+                <div>
+                  <span className="text-muted-foreground">Created:</span>
+                  <span className="ml-2">
+                    {new Date(product.createdAt).toLocaleString()}
+                  </span>
+                </div>
+              )}
+              {product.updatedAt && (
+                <div>
+                  <span className="text-muted-foreground">Last Updated:</span>
+                  <span className="ml-2">
+                    {new Date(product.updatedAt).toLocaleString()}
+                  </span>
+                </div>
+              )}
+              {product.eshopboxProductId && (
+                <div>
+                  <span className="text-muted-foreground">Eshopbox ID:</span>
+                  <span className="ml-2 font-mono">{product.eshopboxProductId}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-8">
           {/* Top grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -556,6 +737,55 @@ export default function UpsertProductPage() {
                 step={0.01}
                 required
               />
+            </div>
+
+            {/* Discount Percentage */}
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-2">
+                Discount Percentage (%)
+              </label>
+              <input
+                type="number"
+                value={discountPercentage ?? ""}
+                onChange={(e) => {
+                  const val = e.target.value === "" ? undefined : Number(e.target.value);
+                  if (val === undefined || (val >= 0 && val <= 100)) {
+                    setDiscountPercentage(val);
+                  }
+                }}
+                className="w-full px-3 py-2 bg-background text-foreground border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                min={0}
+                max={100}
+                step={1}
+                placeholder="e.g., 10 for 10% off"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Optional: Enter a discount percentage (0-100). A badge will be shown on the product.
+              </p>
+            </div>
+
+            {/* Display Order */}
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-2">
+                Display Order
+              </label>
+              <input
+                type="number"
+                value={displayOrder ?? ""}
+                onChange={(e) => {
+                  const val = e.target.value === "" ? undefined : Number(e.target.value);
+                  if (val === undefined || Number.isFinite(val)) {
+                    setDisplayOrder(val);
+                  }
+                }}
+                className="w-full px-3 py-2 bg-background text-foreground border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                min={0}
+                step={1}
+                placeholder="e.g., 1, 2, 3... (lower numbers appear first)"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Optional: Lower numbers appear first in product listings. Leave empty for auto-assignment (appears last).
+              </p>
             </div>
 
             {/* Category */}
@@ -724,6 +954,8 @@ export default function UpsertProductPage() {
                 <ul className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                   {existingImages.map((src, i) => {
                     const isRemoved = removedImageIndices.has(i);
+                    const position = i + 1;
+                    const isVideo = src.includes(".mp4") || src.includes(".webm") || src.includes(".mov");
                     return (
                       <li
                         key={`existing-${i}`}
@@ -731,8 +963,16 @@ export default function UpsertProductPage() {
                           isRemoved ? "opacity-50 border-red-500" : "border-border"
                         }`}
                       >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={src} alt={`existing-${i}`} className="w-full h-28 object-cover" />
+                        {/* Position number badge */}
+                        <div className="absolute top-1 left-1 z-10 bg-black/70 text-white text-xs font-bold px-2 py-1 rounded">
+                          {position}{position === 1 ? "st" : position === 2 ? "nd" : position === 3 ? "rd" : "th"}
+                        </div>
+                        {isVideo ? (
+                          <video src={src} className="w-full h-28 object-cover" muted />
+                        ) : (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img src={src} alt={`existing-${i}`} className="w-full h-28 object-cover" />
+                        )}
                         {/* Delete button */}
                         <button
                           type="button"
@@ -748,7 +988,7 @@ export default function UpsertProductPage() {
                               ? "bg-green-600 hover:bg-green-700 text-white"
                               : "bg-red-600 hover:bg-red-700 text-white"
                           }`}
-                          title={isRemoved ? "Restore image" : "Remove image"}
+                          title={isRemoved ? "Restore" : "Remove"}
                         >
                           {isRemoved ? (
                             <span className="text-xs font-bold">↺</span>
@@ -761,7 +1001,7 @@ export default function UpsertProductPage() {
                   })}
                 </ul>
               ) : (
-                <p className="text-sm text-muted-foreground">No images found.</p>
+                <p className="text-sm text-muted-foreground">No images/videos found.</p>
               )}
             </div>
           )}
@@ -770,59 +1010,79 @@ export default function UpsertProductPage() {
           <div>
             <label className="block text-sm font-medium text-muted-foreground mb-2">
               {isCreate
-                ? "Upload Gallery Images (3–5 required)"
-                : "Replace Gallery Images (3–5 required only if replacing)"}
+                ? "Upload Gallery Images/Videos (3–7 required)"
+                : `Add New Images/Videos (${keptExistingImages.length} kept, need ${Math.max(0, 3 - keptExistingImages.length)}–${Math.max(0, 7 - keptExistingImages.length)} more for 3–7 total)`}
             </label>
 
             <input
               type="file"
               multiple
-              accept="image/*"
+              accept="image/*,video/*"
               onChange={handleFileChange}
               className="w-full px-3 py-2 bg-background text-foreground border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
             />
+            <p className="text-xs text-muted-foreground mt-1">
+              Accepted: Images (jpg, png, etc.) and Videos (mp4, webm, mov, etc.)
+            </p>
 
             {previews.length > 0 && (
               <>
                 <ul className="mt-3 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                  {previews.map((src, i) => (
-                    <li
-                      key={`${src}-${i}`}
-                      className="relative border border-border rounded-lg overflow-hidden"
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={src} alt={`image-${i}`} className="w-full h-28 object-cover" />
-                      <div className="absolute top-1 right-1 flex gap-1">
-                        <button
-                          type="button"
-                          onClick={() => moveSelected(i, -1)}
-                          className="px-2 py-1 text-xs rounded bg-muted/80 border border-border"
-                          title="Move left"
-                        >
-                          ←
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => moveSelected(i, 1)}
-                          className="px-2 py-1 text-xs rounded bg-muted/80 border border-border"
-                          title="Move right"
-                        >
-                          →
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => removeSelected(i)}
-                          className="px-2 py-1 text-xs rounded bg-red-600 text-white"
-                          title="Remove"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    </li>
-                  ))}
+                  {previews.map((preview, i) => {
+                    const position = keptExistingImages.length + i + 1;
+                    return (
+                      <li
+                        key={`${preview.url}-${i}`}
+                        className="relative border border-border rounded-lg overflow-hidden"
+                      >
+                        {/* Position number badge */}
+                        <div className="absolute top-1 left-1 z-10 bg-black/70 text-white text-xs font-bold px-2 py-1 rounded">
+                          {position}{position === 1 ? "st" : position === 2 ? "nd" : position === 3 ? "rd" : "th"}
+                        </div>
+                        {preview.isVideo ? (
+                          <video src={preview.url} className="w-full h-28 object-cover" muted />
+                        ) : (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img src={preview.url} alt={`preview-${i}`} className="w-full h-28 object-cover" />
+                        )}
+                        <div className="absolute top-1 right-1 flex gap-1">
+                          <button
+                            type="button"
+                            onClick={() => moveSelected(i, -1)}
+                            className="px-2 py-1 text-xs rounded bg-muted/80 border border-border hover:bg-muted"
+                            title="Move left"
+                            disabled={i === 0}
+                          >
+                            ←
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => moveSelected(i, 1)}
+                            className="px-2 py-1 text-xs rounded bg-muted/80 border border-border hover:bg-muted"
+                            title="Move right"
+                            disabled={i === previews.length - 1}
+                          >
+                            →
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeSelected(i)}
+                            className="px-2 py-1 text-xs rounded bg-red-600 text-white hover:bg-red-700"
+                            title="Remove"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                        {/* File type indicator */}
+                        <div className="absolute bottom-1 left-1 bg-black/70 text-white text-xs px-1.5 py-0.5 rounded">
+                          {preview.isVideo ? "VIDEO" : "IMAGE"}
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
                 <p className="text-sm text-muted-foreground mt-2">
-                  {selectedFiles.length} file(s) selected
+                  {selectedFiles.length} new file(s) selected • Total: {keptExistingImages.length + selectedFiles.length} / 3–7 required
                 </p>
               </>
             )}

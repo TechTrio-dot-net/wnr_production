@@ -15,6 +15,7 @@ import { buildUrl } from "@/lib/api";
 import ProductJsonLd from "@/components/seo/ProductJsonLd";
 import BreadcrumbsJsonLd from "@/components/seo/BreadcrumbsJsonLd";
 import { trackAddToCart, trackBeginCheckout } from "@/lib/ga";
+import { trackViewContent as trackMetaViewContent, trackAddToCart as trackMetaAddToCart, trackInitiateCheckout as trackMetaInitiateCheckout } from "@/lib/metaPixel";
 import { ProductReviews } from "@/components/reviews/ProductReviews";
 
 /* ---------------- Backend raw types (as returned) ---------------- */
@@ -35,6 +36,7 @@ type DBProductRaw = {
   description?: string;
   descriptionPoints?: string[];
   steepingInstructions?: string[];
+  discountPercentage?: number; // 0-100, e.g., 10 for 10% off
 };
 
 /* ---------------- Normalized product (front-end friendly) ---------------- */
@@ -42,7 +44,7 @@ type DBProduct = {
   _id: string;
   sku?: string;
   name: string;
-  price: number;
+  price: number; // Original price
   images: string[]; // array of urls
   pack?: string;
   stock?: number | null;
@@ -52,6 +54,7 @@ type DBProduct = {
   description?: string | null;
   descriptionPoints: string[];
   steepingInstructions?: string[] | null;
+  discountPercentage?: number; // 0-100, e.g., 10 for 10% off
 };
 
 /* ---------------- Serviceability ---------------- */
@@ -149,6 +152,10 @@ const normalizeProduct = (raw: DBProductRaw | null): DBProduct | null => {
   const descriptionPoints = Array.isArray(raw.descriptionPoints)
     ? raw.descriptionPoints.filter((s): s is string => typeof s === "string" && s.trim().length > 0)
     : [];
+  const discountPercentage = typeof raw.discountPercentage === "number" && raw.discountPercentage > 0 && raw.discountPercentage <= 100
+    ? raw.discountPercentage
+    : undefined;
+  
   return {
     _id: raw._id,
     sku: raw.sku,
@@ -163,10 +170,24 @@ const normalizeProduct = (raw: DBProductRaw | null): DBProduct | null => {
     description: toStr(raw.description),
     descriptionPoints,
     steepingInstructions: Array.isArray(raw.steepingInstructions) ? raw.steepingInstructions : null,
+    discountPercentage,
   };
 };
 
 const fixPath = (src?: string | null) => (src ? src : "/product-placeholder.png");
+
+// Check if a URL is a video file
+const isVideoUrl = (url: string): boolean => {
+  if (!url) return false;
+  const lowerUrl = url.toLowerCase();
+  // Check for video file extensions
+  const videoExtensions = ['.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v'];
+  // Check for Cloudinary video URLs (they often have /video/upload/ in the path)
+  return videoExtensions.some(ext => lowerUrl.includes(ext)) || 
+         lowerUrl.includes('/video/upload/') ||
+         lowerUrl.includes('resource_type=video');
+};
+
 const getSteepingSteps = (p: DBProduct | null) =>
   Array.isArray(p?.steepingInstructions) && p!.steepingInstructions!.length
     ? (p!.steepingInstructions as string[])
@@ -300,6 +321,13 @@ export default function ProductDetailPage() {
         if (!alive) return;
         setProduct(data);
         if (data) {
+          // Track ViewContent for Meta Pixel with complete catalog data
+          trackMetaViewContent(String(data._id), data.name, Number(data.price) || 0, {
+            sku: data.sku,
+            category: data.tag || undefined,
+            brand: "Wild n' Root",
+          });
+          
           const more = await fetchExplore(String(data._id));
           if (!alive) return;
           setExplore(more);
@@ -478,6 +506,16 @@ export default function ProductDetailPage() {
       });
       // GA4: add_to_cart
       trackAddToCart([{ item_id: String(product._id), item_name: product.name, price: Number(product.price) || 0, quantity: qty }]);
+      // Meta Pixel: AddToCart with complete catalog data
+      trackMetaAddToCart([{
+        id: String(product._id),
+        name: product.name,
+        price: Number(product.price) || 0,
+        quantity: qty,
+        sku: product.sku,
+        category: product.tag || undefined,
+        brand: "Wild n' Root",
+      }]);
     } catch (e: any) {
       toast.error(e?.message || "Could not add to cart");
     }
@@ -494,6 +532,16 @@ export default function ProductDetailPage() {
       const courierIdx = selectedCourierIdx ?? fastest?.index ?? "";
       // GA4: begin_checkout
       trackBeginCheckout([{ item_id: String(product._id), item_name: product.name, price: Number(product.price) || 0, quantity: quantity }], (Number(product.price) || 0) * quantity);
+      // Meta Pixel: InitiateCheckout with complete catalog data
+      trackMetaInitiateCheckout([{
+        id: String(product._id),
+        name: product.name,
+        price: Number(product.price) || 0,
+        quantity: quantity,
+        sku: product.sku,
+        category: product.tag || undefined,
+        brand: "Wild n' Root",
+      }], (Number(product.price) || 0) * quantity);
       router.push(`/checkout?mode=buynow&id=${encodeURIComponent(product._id)}&qty=${quantity}&courier=${courierIdx}`);
     } catch (e: any) {
       toast.error(e?.message || "Could not proceed to checkout");
@@ -560,28 +608,79 @@ export default function ProductDetailPage() {
 
       {!loading && product && (
         <>
-          {/* Title only on mobile */}
-          <section className="pt-8 pb-2 text-center md:hidden">
-            <h1 className="text-2xl font-bold tracking-tight text-[var(--wnr-berry)]">{product.name}</h1>
+          {/* Title and Price on mobile - side by side */}
+          <section className="pt-8 pb-2 px-4 md:hidden">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <h1 className="text-2xl font-bold tracking-tight text-[var(--wnr-berry)] flex-1 min-w-0">{product.name}</h1>
+              <div className="flex items-center gap-2 shrink-0">
+                {product.discountPercentage && product.discountPercentage > 0 ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-base text-gray-400 line-through">₹{product.price.toLocaleString("en-IN")}</span>
+                    <span className="text-3xl font-extrabold text-[var(--wnr-berry)]">
+                      ₹{Math.round(product.price * (1 - product.discountPercentage / 100)).toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                ) : (
+                  <span className="text-3xl font-extrabold text-[var(--wnr-berry)]">
+                    ₹{product.price.toLocaleString("en-IN")}
+                  </span>
+                )}
+              </div>
+            </div>
+            {product.discountPercentage && product.discountPercentage > 0 && (
+              <div className="mt-2">
+                <div className="relative inline-block">
+                  {/* Main badge with gradient */}
+                  <div className="relative inline-flex items-center gap-1.5 bg-gradient-to-br from-red-500 via-red-600 to-red-700 text-white text-xs sm:text-sm font-extrabold px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg shadow-[0_4px_12px_rgba(239,68,68,0.4)] transform transition-all duration-300">
+                    {/* Shine effect */}
+                    <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-white/20 via-transparent to-transparent pointer-events-none" />
+                    
+                    {/* Badge content */}
+                    <div className="relative flex items-center gap-1">
+                      <span className="leading-none tracking-tight">{product.discountPercentage}%</span>
+                      <span className="text-[10px] sm:text-xs leading-none opacity-90">OFF</span>
+                    </div>
+                    
+                    {/* Decorative corner accent */}
+                    <div className="absolute -top-1 -right-1 w-2 h-2 sm:w-2.5 sm:h-2.5 bg-white rounded-full opacity-80 shadow-sm" />
+                  </div>
+                  
+                  {/* Floating glow effect */}
+                  <div className="absolute inset-0 bg-red-500/30 rounded-lg blur-md -z-10 animate-pulse" />
+                </div>
+              </div>
+            )}
           </section>
 
           <div className="max-w-7xl mx-auto p-3 sm:p-4 md:p-6 md:mt-28 grid md:grid-cols-2 gap-3 sm:gap-4 md:gap-8">
             <div className="flex flex-col gap-3">
               <div className="flex flex-col md:flex-row gap-3">
-                {/* Main image */}
+                {/* Main image/video */}
                 <div className="relative flex-1 rounded-lg overflow-hidden order-1 md:order-2">
-                  <Image
-                    src={selectedImage}
-                    alt={product.name}
-                    width={900}
-                    height={900}
-                    priority
-                    style={{ width: "100%", height: "auto" }}
-                    className="object-cover transition-transform duration-300"
-                    sizes="(min-width: 768px) 50vw, 100vw"
-                  />
+                  {isVideoUrl(selectedImage) ? (
+                    <video
+                      src={selectedImage}
+                      autoPlay
+                      loop
+                      muted
+                      playsInline
+                      className="w-full h-auto object-cover"
+                      style={{ width: "100%", height: "auto" }}
+                    />
+                  ) : (
+                    <Image
+                      src={selectedImage}
+                      alt={product.name}
+                      width={900}
+                      height={900}
+                      priority
+                      style={{ width: "100%", height: "auto" }}
+                      className="object-cover transition-transform duration-300"
+                      sizes="(min-width: 768px) 50vw, 100vw"
+                    />
+                  )}
                   {product.tag ? (
-                    <span className="bg-rose-900 absolute top-3 left-3 text-white px-3 py-1 text-sm rounded-full shadow">
+                    <span className="bg-rose-900 absolute top-3 left-3 text-white px-3 py-1 text-sm rounded-full shadow z-10">
                       {product.tag}
                     </span>
                   ) : null}
@@ -591,21 +690,30 @@ export default function ProductDetailPage() {
                 <div className="flex flex-row md:flex-col gap-2 md:gap-4 overflow-x-auto md:overflow-visible order-2 md:order-1 pb-1 md:pb-0">
                   {(gallery.length ? gallery : [first]).map((img, idx) => {
                     const src = fixPath(img);
+                    const isVideo = isVideoUrl(src);
                     return (
                       <button
                         key={`${src}-${idx}`}
                         onClick={() => setSelectedImage(src)}
                         className={`rounded-md overflow-hidden flex-shrink-0 ${selectedImage === src ? "ring-2 ring-[var(--wnr-berry)]" : ""
                           }`}
-                        aria-label={`${product.name} image ${idx + 1}`}
+                        aria-label={`${product.name} ${isVideo ? 'video' : 'image'} ${idx + 1}`}
                       >
-                        <Image
-                          src={src}
-                          alt={`${product.name} ${idx + 1}`}
-                          width={80}
-                          height={80}
-                          className="w-16 h-16 sm:w-20 sm:h-20 md:w-20 md:h-20 object-cover"
-                        />
+                        {isVideo ? (
+                          <video
+                            src={src}
+                            muted
+                            className="w-16 h-16 sm:w-20 sm:h-20 md:w-20 md:h-20 object-cover"
+                          />
+                        ) : (
+                          <Image
+                            src={src}
+                            alt={`${product.name} ${idx + 1}`}
+                            width={80}
+                            height={80}
+                            className="w-16 h-16 sm:w-20 sm:h-20 md:w-20 md:h-20 object-cover"
+                          />
+                        )}
                       </button>
                     );
                   })}
@@ -639,17 +747,73 @@ export default function ProductDetailPage() {
             </div>
 
             <div className="space-y-4 md:space-y-6 md:sticky md:top-24 self-start">
-              <h1 className="hidden md:block text-3xl font-bold text-[var(--wnr-berry)]">{product.name}</h1>
-
-              <div className="flex items-center justify-between">
-                <p className="text-xl md:text-2xl font-bold text-[var(--wnr-berry)]">₹{product.price}</p>
-                <span
-                  className={`px-2 md:px-3 py-1 rounded-full text-xs md:text-sm ${product.stock == null || product.stock > 0 ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"
-                    }`}
-                >
-                  {product.stock == null || product.stock > 0 ? "In Stock" : "Out of Stock"}
-                </span>
+              {/* Product Name and Price - Side by Side */}
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <h1 className="hidden md:block text-3xl font-bold text-[var(--wnr-berry)] flex-1 min-w-0">{product.name}</h1>
+                <div className="flex items-center gap-3 shrink-0">
+                  {product.discountPercentage && product.discountPercentage > 0 ? (
+                    <>
+                      <span className="text-lg md:text-xl text-gray-400 line-through" aria-label="Original price">
+                        ₹{product.price.toLocaleString("en-IN")}
+                      </span>
+                      <span 
+                        className="text-3xl md:text-4xl lg:text-5xl font-extrabold text-[var(--wnr-berry)] drop-shadow-sm"
+                        itemProp="price"
+                        content={Math.round(product.price * (1 - product.discountPercentage / 100)).toString()}
+                      >
+                        ₹{Math.round(product.price * (1 - product.discountPercentage / 100)).toLocaleString("en-IN")}
+                      </span>
+                    </>
+                  ) : (
+                    <span 
+                      className="text-3xl md:text-4xl lg:text-5xl font-extrabold text-[var(--wnr-berry)] drop-shadow-sm"
+                      itemProp="price"
+                      content={product.price.toString()}
+                    >
+                      ₹{product.price.toLocaleString("en-IN")}
+                    </span>
+                  )}
+                </div>
               </div>
+
+              {/* Out of Stock Badge */}
+              {!inStock && (
+                <div className="inline-block">
+                  <div className="relative">
+                    <div className="relative inline-flex items-center gap-1.5 bg-gradient-to-br from-gray-600 via-gray-700 to-gray-800 text-white text-sm font-extrabold px-4 py-2 rounded-lg shadow-[0_4px_12px_rgba(0,0,0,0.4)]">
+                      <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-white/10 via-transparent to-transparent pointer-events-none" />
+                      <div className="relative flex items-center gap-1">
+                        <span className="leading-none tracking-tight">OUT OF STOCK</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Discount Badge - Floating Designer Style */}
+              {inStock && product.discountPercentage && product.discountPercentage > 0 && (
+                <div className="inline-block">
+                  <div className="relative">
+                    {/* Main badge with gradient */}
+                    <div className="relative inline-flex items-center gap-1.5 bg-gradient-to-br from-red-500 via-red-600 to-red-700 text-white text-sm font-extrabold px-4 py-2 rounded-lg shadow-[0_4px_12px_rgba(239,68,68,0.4)] transform transition-all duration-300 hover:scale-105">
+                      {/* Shine effect */}
+                      <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-white/20 via-transparent to-transparent pointer-events-none" />
+                      
+                      {/* Badge content */}
+                      <div className="relative flex items-center gap-1">
+                        <span className="leading-none tracking-tight">{product.discountPercentage}%</span>
+                        <span className="text-xs leading-none opacity-90">OFF</span>
+                      </div>
+                      
+                      {/* Decorative corner accent */}
+                      <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-white rounded-full opacity-80 shadow-sm" />
+                    </div>
+                    
+                    {/* Floating glow effect */}
+                    <div className="absolute inset-0 bg-red-500/30 rounded-lg blur-md -z-10 animate-pulse" />
+                  </div>
+                </div>
+              )}
 
               <p className="text-gray-700 text-sm md:text-base leading-relaxed">
                 {product.description ?? "A premium small-batch blend designed for taste, calm focus, and daily comfort."}
@@ -911,7 +1075,7 @@ export default function ProductDetailPage() {
                         </Link>
 
                         <div className="text-xs text-gray-500 mt-1">{pack}</div>
-                        <div className="mt-2 font-semibold text-base sm:text-lg">₹{price}</div>
+                        <div className="mt-2 text-xl sm:text-2xl font-extrabold text-[var(--wnr-berry)]">₹{price}</div>
 
                         <div className="mt-3 flex flex-col sm:flex-row gap-2">
                           {/* Add to Cart */}

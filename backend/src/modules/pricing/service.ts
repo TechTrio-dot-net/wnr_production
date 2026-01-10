@@ -96,8 +96,17 @@ export async function priceCart(input: PricingInput): Promise<PricingResult> {
   const subtotal = withPromo.reduce((s, it) => s + it.lineSubtotal, 0);
   const merchandiseTotal = withPromo.reduce((s, it) => s + it.lineTotal, 0);
 
+  // Check if free delivery is enabled in settings
+  const { SettingsModel } = await import("../settings/settings.model");
+  let settings = await SettingsModel.findOne();
+  if (!settings) {
+    settings = await SettingsModel.create({});
+  }
+  const freeDelivery = settings.freeDelivery === true;
+
   const ship = await calcShipping(input.address?.pincode ?? null, merchandiseTotal, input.shipping);
-  const shipping = ship.amount;
+  // If free delivery is enabled, set shipping to 0; otherwise use the calculated amount
+  const shipping = freeDelivery ? 0 : ship.amount;
   const grandTotal = Math.max(0, merchandiseTotal + shipping);
 
   return {

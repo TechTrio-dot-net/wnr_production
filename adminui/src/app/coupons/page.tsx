@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Plus, Edit2, Trash2, Search, CheckCircle2, XCircle, Calendar } from "lucide-react";
-import { getCoupons, createCoupon, updateCoupon, deleteCoupon, type Coupon } from "@/lib/api";
+import { getCoupons, createCoupon, updateCoupon, deleteCoupon, type Coupon, fetchProducts, type Product } from "@/lib/api";
 
 export default function CouponsPage() {
   const [coupons, setCoupons] = useState<Coupon[]>([]);
@@ -11,6 +11,9 @@ export default function CouponsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
   const [formData, setFormData] = useState({
     code: "",
     name: "",
@@ -25,11 +28,19 @@ export default function CouponsPage() {
     userLimit: 1,
     isActive: true,
     firstTimeUserOnly: false,
+    applicableProducts: [] as string[],
   });
 
   useEffect(() => {
     loadCoupons();
   }, []);
+
+  // Load products when modal opens
+  useEffect(() => {
+    if (showModal) {
+      loadProducts();
+    }
+  }, [showModal]);
 
   async function loadCoupons() {
     try {
@@ -44,14 +55,37 @@ export default function CouponsPage() {
     }
   }
 
+  async function loadProducts() {
+    try {
+      setLoadingProducts(true);
+      const data = await fetchProducts();
+      // Filter only active products
+      const activeProducts = data.filter(p => p.status === "active");
+      setProducts(activeProducts);
+    } catch (error: unknown) {
+      console.error("Failed to load products:", error);
+      toast.error("Failed to load products");
+    } finally {
+      setLoadingProducts(false);
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     try {
+      // Convert selectedProductIds Set to array
+      const applicableProducts = Array.from(selectedProductIds);
+      
+      const submitData = {
+        ...formData,
+        applicableProducts: applicableProducts.length > 0 ? applicableProducts : undefined,
+      };
+      
       if (editingCoupon) {
-        await updateCoupon(editingCoupon._id, formData);
+        await updateCoupon(editingCoupon._id, submitData);
         toast.success("Coupon updated");
       } else {
-        await createCoupon(formData);
+        await createCoupon(submitData);
         toast.success("Coupon created");
       }
       setShowModal(false);
@@ -91,7 +125,9 @@ export default function CouponsPage() {
       userLimit: 1,
       isActive: true,
       firstTimeUserOnly: false,
+      applicableProducts: [],
     });
+    setSelectedProductIds(new Set());
   }
 
   function openEditModal(coupon: Coupon) {
@@ -110,7 +146,10 @@ export default function CouponsPage() {
       userLimit: coupon.userLimit || 1,
       isActive: coupon.isActive,
       firstTimeUserOnly: coupon.firstTimeUserOnly,
+      applicableProducts: coupon.applicableProducts || [],
     });
+    // Set selected products from coupon
+    setSelectedProductIds(new Set(coupon.applicableProducts || []));
     setShowModal(true);
   }
 
@@ -157,7 +196,32 @@ export default function CouponsPage() {
 
       {/* Coupons Table */}
       {loading ? (
-        <div className="text-center py-12 text-muted-foreground">Loading coupons...</div>
+        <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-muted/50 border-b border-border">
+                <tr>
+                  {Array.from({ length: 7 }).map((_, i) => (
+                    <th key={i} className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      <div className="h-4 w-24 bg-muted rounded animate-pulse" />
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <tr key={i} className="hover:bg-muted/30 transition-colors">
+                    {Array.from({ length: 7 }).map((_, j) => (
+                      <td key={j} className="px-6 py-4">
+                        <div className="h-5 bg-muted rounded animate-pulse" style={{ width: `${60 + Math.random() * 40}%` }} />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       ) : filteredCoupons.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">No coupons found</div>
       ) : (
@@ -259,6 +323,7 @@ export default function CouponsPage() {
                   setShowModal(false);
                   setEditingCoupon(null);
                   resetForm();
+                  setSelectedProductIds(new Set());
                 }}
                 className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
               >
@@ -405,6 +470,52 @@ export default function CouponsPage() {
                     <span className="text-sm">First-time users only</span>
                   </label>
                 </div>
+
+                {/* Product Selection */}
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium mb-2">Applicable Products</label>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    Select specific products this coupon applies to. Leave empty to apply to all products.
+                  </p>
+                  {loadingProducts ? (
+                    <div className="text-sm text-muted-foreground py-4">Loading products...</div>
+                  ) : products.length === 0 ? (
+                    <div className="text-sm text-muted-foreground py-4">No active products found</div>
+                  ) : (
+                    <div className="border rounded-lg p-4 max-h-60 overflow-y-auto bg-gray-50">
+                      <div className="space-y-2">
+                        {products.map((product) => (
+                          <label
+                            key={product.id}
+                            className="flex items-center gap-2 p-2 hover:bg-gray-100 rounded cursor-pointer"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedProductIds.has(product.id)}
+                              onChange={(e) => {
+                                const newSet = new Set(selectedProductIds);
+                                if (e.target.checked) {
+                                  newSet.add(product.id);
+                                } else {
+                                  newSet.delete(product.id);
+                                }
+                                setSelectedProductIds(newSet);
+                              }}
+                              className="rounded"
+                            />
+                            <span className="text-sm text-foreground">{product.name}</span>
+                            <span className="text-xs text-muted-foreground ml-auto">₹{product.price.toLocaleString("en-IN")}</span>
+                          </label>
+                        ))}
+                      </div>
+                      {selectedProductIds.size > 0 && (
+                        <div className="mt-3 pt-3 border-t text-xs text-muted-foreground">
+                          {selectedProductIds.size} product{selectedProductIds.size !== 1 ? "s" : ""} selected
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="flex justify-end gap-3 pt-4 border-t">
                 <button
@@ -413,6 +524,7 @@ export default function CouponsPage() {
                     setShowModal(false);
                     setEditingCoupon(null);
                     resetForm();
+                    setSelectedProductIds(new Set());
                   }}
                   className="px-4 py-2 border rounded-lg hover:bg-gray-50"
                 >

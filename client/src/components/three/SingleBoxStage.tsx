@@ -432,7 +432,7 @@ export default function SingleBoxStage({
         {showContactShadow && (
           <ContactShadows
             position={[0, contactY, 0]}
-            opacity={theme === "studio" ? 0.35 : 0.45}
+            opacity={isMobile ? (theme === "studio" ? 0.15 : 0.18) : (theme === "studio" ? 0.35 : 0.45)}
             scale={theme === "studio" ? (isMobile ? 16 : 20) : (isMobile ? 18 : 22)}
             blur={theme === "studio" ? 2.6 : 3.0}
             far={8}

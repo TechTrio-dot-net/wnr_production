@@ -116,7 +116,29 @@ export async function getCoupons(req: Request, res: Response) {
  */
 export async function createCoupon(req: Request, res: Response) {
   try {
-    const couponData = req.body;
+    const couponData = { ...req.body };
+    
+    // Convert applicableProducts string IDs to ObjectIds
+    if (couponData.applicableProducts && Array.isArray(couponData.applicableProducts)) {
+      couponData.applicableProducts = couponData.applicableProducts
+        .filter((id: any) => Types.ObjectId.isValid(id))
+        .map((id: any) => new Types.ObjectId(id));
+    }
+    
+    // Convert applicableCategories string IDs to ObjectIds
+    if (couponData.applicableCategories && Array.isArray(couponData.applicableCategories)) {
+      couponData.applicableCategories = couponData.applicableCategories
+        .filter((id: any) => Types.ObjectId.isValid(id))
+        .map((id: any) => new Types.ObjectId(id));
+    }
+    
+    // Convert excludeProducts string IDs to ObjectIds
+    if (couponData.excludeProducts && Array.isArray(couponData.excludeProducts)) {
+      couponData.excludeProducts = couponData.excludeProducts
+        .filter((id: any) => Types.ObjectId.isValid(id))
+        .map((id: any) => new Types.ObjectId(id));
+    }
+    
     const coupon = new CouponModel(couponData);
     await coupon.save();
     return res.json({ coupon });
@@ -140,7 +162,42 @@ export async function updateCoupon(req: Request, res: Response) {
       return res.status(400).json({ message: "Invalid coupon ID" });
     }
 
-    const coupon = await (CouponModel as any).findByIdAndUpdate(id, req.body, { new: true }).lean();
+    const updateData: any = { ...req.body };
+    
+    // Convert applicableProducts string IDs to ObjectIds
+    if (updateData.applicableProducts !== undefined) {
+      if (Array.isArray(updateData.applicableProducts) && updateData.applicableProducts.length > 0) {
+        updateData.applicableProducts = updateData.applicableProducts
+          .filter((id: any) => Types.ObjectId.isValid(id))
+          .map((id: any) => new Types.ObjectId(id));
+      } else if (updateData.applicableProducts === null || (Array.isArray(updateData.applicableProducts) && updateData.applicableProducts.length === 0)) {
+        updateData.applicableProducts = [];
+      }
+    }
+    
+    // Convert applicableCategories string IDs to ObjectIds
+    if (updateData.applicableCategories !== undefined) {
+      if (Array.isArray(updateData.applicableCategories) && updateData.applicableCategories.length > 0) {
+        updateData.applicableCategories = updateData.applicableCategories
+          .filter((id: any) => Types.ObjectId.isValid(id))
+          .map((id: any) => new Types.ObjectId(id));
+      } else if (updateData.applicableCategories === null || (Array.isArray(updateData.applicableCategories) && updateData.applicableCategories.length === 0)) {
+        updateData.applicableCategories = [];
+      }
+    }
+    
+    // Convert excludeProducts string IDs to ObjectIds
+    if (updateData.excludeProducts !== undefined) {
+      if (Array.isArray(updateData.excludeProducts) && updateData.excludeProducts.length > 0) {
+        updateData.excludeProducts = updateData.excludeProducts
+          .filter((id: any) => Types.ObjectId.isValid(id))
+          .map((id: any) => new Types.ObjectId(id));
+      } else if (updateData.excludeProducts === null || (Array.isArray(updateData.excludeProducts) && updateData.excludeProducts.length === 0)) {
+        updateData.excludeProducts = [];
+      }
+    }
+
+    const coupon = await (CouponModel as any).findByIdAndUpdate(id, updateData, { new: true }).lean();
     if (!coupon) {
       return res.status(404).json({ message: "Coupon not found" });
     }

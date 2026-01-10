@@ -9,6 +9,7 @@ import CelebrationConfetti from "@/components/common/CelebrationConfetti";
 import { getAuthHeader } from "@/lib/token";
 import { buildUrl } from "@/lib/api";
 import { trackPurchase, type GAItem } from "@/lib/ga";
+import { trackPurchase as trackMetaPurchase } from "@/lib/metaPixel";
 import { renderInvoicePDF } from "@/lib/invoice";
 import { Download } from "lucide-react";
 
@@ -148,7 +149,7 @@ export default function ThankYouClient({
     return () => { mounted = false; };
   }, [orderNumber]);
 
-  // Fire GA4 purchase once when we have order details
+  // Fire GA4 and Meta Pixel purchase once when we have order details
   useEffect(() => {
     if (!orderNumber) return;
     const amount = Number(order?.amount ?? fallbackAmount) || 0;
@@ -158,7 +159,18 @@ export default function ThankYouClient({
       price: Number(it.price) || 0,
       quantity: Number(it.qty) || 1,
     }));
+    // GA4: Purchase
     trackPurchase(String(order?.orderNumber || orderNumber), amount, items);
+    // Meta Pixel: Purchase with complete catalog data
+    const metaItems = (order?.items || []).map((it) => ({
+      id: String(it.id),
+      name: it.name,
+      price: Number(it.price) || 0,
+      quantity: Number(it.qty) || 1,
+      brand: "Wild n' Root", // Brand name for catalog
+      // Note: SKU and category would need to be included in order data if available
+    }));
+    trackMetaPurchase(String(order?.orderNumber || orderNumber), amount, metaItems);
   }, [order?.orderNumber, order?.amount, order?.items, orderNumber, fallbackAmount]);
 
   const eta = useMemo(() => {

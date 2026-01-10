@@ -24,9 +24,11 @@ export type CartItemPopulated = {
     images?: (string | { url: string })[];
     stock?: number;
     isActive?: boolean;
+    discountPercentage?: number;
   };
   qty: number;
   priceAtAdd: number;
+  discountPercentageAtAdd?: number;
 };
 
 export type CartResponse = {

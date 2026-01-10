@@ -19,7 +19,7 @@ export interface ProductDoc extends Document {
   eshopboxProductId: string;
   stock: number;
   status: ProductStatus;
-  images: ImageInfo[];     // 3–5 images with metadata
+  images: ImageInfo[];     // 3–7 images/videos with metadata
   hover?: ImageInfo;       // optional hover image
 
   // NEW text fields (optional)
@@ -27,6 +27,12 @@ export interface ProductDoc extends Document {
   ingredients?: string;
   description?: string;
   descriptionPoints?: string[];
+
+  // Discount/Offer
+  discountPercentage?: number; // 0-100, e.g., 10 for 10% off
+
+  // Display Order (lower numbers appear first)
+  displayOrder?: number;
 
   createdAt: Date;
   updatedAt: Date;
@@ -62,8 +68,8 @@ const ProductSchema = new Schema<ProductDoc>(
       type: [ImageSchema],
       required: true,
       validate: {
-        validator: (arr: unknown[]) => Array.isArray(arr) && arr.length >= 3 && arr.length <= 5,
-        message: "Provide between 3 and 5 images",
+        validator: (arr: unknown[]) => Array.isArray(arr) && arr.length >= 3 && arr.length <= 7,
+        message: "Provide between 3 and 7 images/videos",
       },
     },
     hover: {
@@ -82,6 +88,21 @@ const ProductSchema = new Schema<ProductDoc>(
         validator: (arr: unknown[]) => !arr || Array.isArray(arr),
         message: "descriptionPoints must be an array of strings",
       },
+    },
+
+    // Discount/Offer
+    discountPercentage: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: undefined,
+    },
+
+    // Display Order (lower numbers appear first, default to 9999 for new products to appear last)
+    displayOrder: {
+      type: Number,
+      default: 9999,
+      index: true,
     },
   },
   { timestamps: true, collection: "products" }

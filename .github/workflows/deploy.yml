@@ -1,0 +1,59 @@
+name: Deploy to Digital Ocean
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch: # Allows manual triggering
+
+jobs:
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DO_SSH_PRIVATE_KEY }}
+
+      - name: Add server to known hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.DO_HOST }} >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy to server
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.DO_USER }}@${{ secrets.DO_HOST }} << 'EOF'
+            set -e
+            echo "🚀 Starting deployment..."
+            
+            # Navigate to app directory or clone if it doesn't exist
+            if [ ! -d ~/wnr ]; then
+              echo "📦 Cloning repository..."
+              git clone ${{ secrets.GITHUB_REPO_URL }} ~/wnr
+              cd ~/wnr
+            else
+              cd ~/wnr
+              echo "📥 Pulling latest changes..."
+              git fetch origin
+              # Determine current branch or default to main/master
+              CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "main")
+              git reset --hard origin/$CURRENT_BRANCH || git reset --hard origin/main || git reset --hard origin/master
+            fi
+            
+            # Ensure deployment script is executable
+            chmod +x scripts/deploy-server.sh
+            
+            # Run deployment script
+            echo "🔧 Running deployment script..."
+            ./scripts/deploy-server.sh
+            
+            echo "✅ Deployment complete!"
+          EOF
+

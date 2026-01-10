@@ -88,7 +88,19 @@ export default function NotificationBell() {
       }
       previousCountRef.current = result.counts.total;
     } catch (error) {
-      console.error("Failed to fetch notifications:", error);
+      // Silently handle authentication errors (Unauthorized, No session)
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const isAuthError = 
+        errorMessage.includes("Unauthorized") || 
+        errorMessage.includes("No session") ||
+        errorMessage.includes("401") ||
+        errorMessage.includes("403");
+      
+      if (!isAuthError) {
+        // Only log non-authentication errors
+        console.error("Failed to fetch notifications:", error);
+      }
+      
       // Set empty data on error to prevent crashes
       setData({
         counts: { newOrders: 0, pendingReviews: 0, shipmentIssues: 0, lowStock: 0, total: 0 },

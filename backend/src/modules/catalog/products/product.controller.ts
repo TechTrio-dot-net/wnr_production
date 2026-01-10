@@ -38,8 +38,13 @@ async function uploadFilesToCloudinary(
   if (!files?.length) return [];
   const uploads = await Promise.all(
     files.map(async (file, idx) => {
+      // Detect if file is a video
+      const isVideo = file.mimetype?.startsWith("video/") || false;
+      const resourceType = isVideo ? "video" : "image";
+      
       const res = await uploadBufferToCloudinary(file.buffer, {
         folder: process.env.CLOUDINARY_FOLDER || "uploads",
+        resource_type: resourceType,
       });
       const item: ImageInfo = {
         url: res.secure_url,
@@ -59,8 +64,14 @@ async function uploadFilesToCloudinary(
 // Upload a single file and return ImageInfo (or undefined)
 async function uploadOne(file?: Express.Multer.File, alt?: string): Promise<ImageInfo | undefined> {
   if (!file) return undefined;
+  
+  // Detect if file is a video
+  const isVideo = file.mimetype?.startsWith("video/") || false;
+  const resourceType = isVideo ? "video" : "image";
+  
   const res = await uploadBufferToCloudinary(file.buffer, {
     folder: process.env.CLOUDINARY_FOLDER || "uploads",
+    resource_type: resourceType,
   });
   const info: ImageInfo = {
     url: res.secure_url,
@@ -79,14 +90,19 @@ async function uploadOne(file?: Express.Multer.File, alt?: string): Promise<Imag
 export async function listProducts(req: Request, res: Response, next: NextFunction) {
   try {
     // Optimized: Only fetch active products by default, filter by status if provided
+    // If status is "all", fetch all products regardless of status
     const status = req.query.status as string | undefined;
-    const filter = status ? { status } : { status: "active" };
+    const filter = status === "all" 
+      ? {} 
+      : status 
+        ? { status } 
+        : { status: "active" };
     
-    // Optimized: Select only needed fields for list view (including hover for sachet/pack image)
+    // Optimized: Select only needed fields for list view (including hover for sachet/pack image and discountPercentage)
     const docs = await Product.find(filter)
-      .select("name price images hover stock status category createdAt eshopboxProductId")
+      .select("name price images hover stock status category createdAt eshopboxProductId discountPercentage about ingredients description descriptionPoints displayOrder")
       .populate({ path: "category", select: "name" })
-      .sort({ createdAt: -1 })
+      .sort({ displayOrder: 1, createdAt: -1 }) // Sort by displayOrder first (ascending), then by createdAt (newest first) as fallback
       .lean();
     res.json(docs);
   } catch (err) {
@@ -124,6 +140,15 @@ export async function createProduct(req: Request, res: Response, next: NextFunct
     const ingredients = strOrUndef(req.body?.ingredients);
     const description = strOrUndef(req.body?.description);
     const descriptionPoints = toPoints(req.body?.descriptionPoints);
+    
+    // Discount percentage (optional, 0-100)
+    let discountPercentage: number | undefined = undefined;
+    if (req.body?.discountPercentage !== undefined) {
+      const discountNum = Number(req.body.discountPercentage);
+      if (Number.isFinite(discountNum) && discountNum >= 0 && discountNum <= 100) {
+        discountPercentage = discountNum;
+      }
+    }
 
     if (!name || typeof name !== "string" || !name.trim()) {
       return res.status(400).json({ error: "'name' is required" });
@@ -161,15 +186,30 @@ export async function createProduct(req: Request, res: Response, next: NextFunct
     const imageFiles = filesMap.images || [];
     const hoverFiles = filesMap.hover || [];
 
-    // Require 3–5 images for create
+    // Require 3–7 images/videos for create
     const images = await uploadFilesToCloudinary(imageFiles, alts);
-    if (images.length < 3 || images.length > 5) {
+    if (images.length < 3 || images.length > 7) {
       await Promise.all(images.map((img) => destroyCloudinaryPublicId(img.public_id)));
-      return res.status(400).json({ error: "Provide between 3 and 5 images" });
+      return res.status(400).json({ error: "Provide between 3 and 7 images/videos" });
     }
 
     const hoverAlt = Array.isArray(req.body?.hoverAlt) ? req.body.hoverAlt[0] : req.body?.hoverAlt;
     const hover = await uploadOne(hoverFiles[0], typeof hoverAlt === "string" ? hoverAlt : undefined);
+
+    // Handle displayOrder - if not provided, set to highest existing + 1, or default to 9999
+    let displayOrder: number = 9999;
+    if (req.body?.displayOrder !== undefined) {
+      const orderNum = Number(req.body.displayOrder);
+      if (Number.isFinite(orderNum)) {
+        displayOrder = orderNum;
+      }
+    } else {
+      // Auto-assign: find highest displayOrder and add 1, or default to 9999
+      const highestOrder = await Product.findOne().sort({ displayOrder: -1 }).select("displayOrder").lean();
+      if (highestOrder && typeof highestOrder.displayOrder === "number") {
+        displayOrder = highestOrder.displayOrder + 1;
+      }
+    }
 
     const doc = await Product.create({
       name: name.trim(),
@@ -186,6 +226,8 @@ export async function createProduct(req: Request, res: Response, next: NextFunct
       ...(ingredients ? { ingredients } : {}),
       ...(description ? { description } : {}),
       ...(descriptionPoints?.length ? { descriptionPoints } : {}),
+      ...(discountPercentage !== undefined ? { discountPercentage } : {}),
+      displayOrder,
     });
 
     return res.status(201).json(doc);
@@ -262,6 +304,27 @@ export async function updateProduct(req: Request, res: Response, next: NextFunct
     if (ingredients !== undefined) updates.ingredients = ingredients;
     if (description !== undefined) updates.description = description;
     if (descriptionPoints !== undefined) updates.descriptionPoints = descriptionPoints;
+    
+    // Discount percentage (optional in update, 0-100)
+    if (req.body?.discountPercentage !== undefined) {
+      const discountNum = Number(req.body.discountPercentage);
+      if (Number.isFinite(discountNum) && discountNum >= 0 && discountNum <= 100) {
+        // Allow 0 to be saved explicitly (to set no discount)
+        updates.discountPercentage = discountNum;
+      } else if (req.body.discountPercentage === "" || req.body.discountPercentage === null) {
+        // Allow clearing discount by sending empty string or null
+        // With exactOptionalPropertyTypes, we need to delete the property instead of setting undefined
+        delete updates.discountPercentage;
+      }
+    }
+
+    // Display Order (optional in update)
+    if (req.body?.displayOrder !== undefined) {
+      const orderNum = Number(req.body.displayOrder);
+      if (Number.isFinite(orderNum)) {
+        updates.displayOrder = orderNum;
+      }
+    }
 
     // Files (multer.fields)
     const filesMap = (req.files as Record<string, Express.Multer.File[]>) || {};
@@ -279,19 +342,19 @@ export async function updateProduct(req: Request, res: Response, next: NextFunct
       }
     }
 
-    // If gallery images provided, enforce 3–5 and replace them
+    // If gallery images provided, enforce 3–7 and replace them
     if (incomingImages.length > 0) {
-      if (incomingImages.length < 3 || incomingImages.length > 5) {
-        return res.status(400).json({ error: "Provide between 3 and 5 images when replacing" });
+      if (incomingImages.length < 3 || incomingImages.length > 7) {
+        return res.status(400).json({ error: "Provide between 3 and 7 images/videos when replacing" });
       }
 
       const existing = await Product.findById(id);
       if (!existing) return res.status(404).json({ error: "Not Found" });
 
       const newImages = await uploadFilesToCloudinary(incomingImages);
-      if (newImages.length < 3 || newImages.length > 5) {
+      if (newImages.length < 3 || newImages.length > 7) {
         await Promise.all(newImages.map((img) => destroyCloudinaryPublicId(img.public_id)));
-        return res.status(400).json({ error: "Provide between 3 and 5 images when replacing" });
+        return res.status(400).json({ error: "Provide between 3 and 7 images/videos when replacing" });
       }
 
       // Destroy old gallery AFTER successful upload
@@ -316,9 +379,9 @@ export async function updateProduct(req: Request, res: Response, next: NextFunct
       );
       
       // Validate count
-      if (imagesToKeep.length < 3 || imagesToKeep.length > 5) {
+      if (imagesToKeep.length < 3 || imagesToKeep.length > 7) {
         return res.status(400).json({
-          error: `After removing images, you need 3–5 images total. Currently: ${imagesToKeep.length}`,
+          error: `After removing images, you need 3–7 images/videos total. Currently: ${imagesToKeep.length}`,
         });
       }
 

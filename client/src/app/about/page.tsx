@@ -65,28 +65,27 @@ function SectionReveal({
 }
 
 /* -------------------------- MINIMAL CROSSFADE CAROUSEL -------------------- */
-/** Replace the last two with your final Cloudinary URLs when ready. */
 const CAROUSEL_IMAGES = [
-  "https://res.cloudinary.com/dob666wa0/image/upload/v1761406349/IMG_0749_TIF-min_j03lvz.jpg",
-  "https://res.cloudinary.com/dob666wa0/image/upload/v1761406349/IMG_0747_TIF-min_kyt4hh.jpg",
-  "https://res.cloudinary.com/dob666wa0/image/upload/v1761406349/IMG_0745_TIF-min_l31et6.jpg",
-  "https://res.cloudinary.com/dob666wa0/image/upload/v1761406349/IMG_0743_TIF-min_ysz6vn.jpg", // ← replace with your 4th Cloudinary URL
-  "https://res.cloudinary.com/dob666wa0/image/upload/v1761406349/IMG_0751_TIF-min_knstac.jpg", // ← replace with your 5th Cloudinary URL
+  "/images/about/carousel-1.jpg",
+  "/images/about/carousel-2.jpg",
+  "/images/about/carousel-3.jpg",
+  "/images/about/carousel-4.jpg",
+  "/images/about/carousel-5.jpg",
 ];
 
 /* -------------------------- CERTIFICATE CAROUSEL -------------------- */
 const CERTIFICATES = [
   { 
     number: "DIPP136785",
-    logoUrl: "https://res.cloudinary.com/dob666wa0/image/upload/v1765694609/idYahWKGIU_1765694367836_zbkzw5.png"
+    logoUrl: "/images/about/certificate-1.png"
   },
   { 
     number: "20725038002230",
-    logoUrl: "https://res.cloudinary.com/dob666wa0/image/upload/v1765694610/d9551398f374296d9ecb997424b6d260_vygbkt.png"
+    logoUrl: "/images/about/certificate-2.png"
   },
 ];
 
-const DEFAULT_LOGO_URL = "https://res.cloudinary.com/dob666wa0/image/upload/v1761601822/wnr/uploads/file_p4t1k2.png";
+const DEFAULT_LOGO_URL = "/images/WNR-Logo.png";
 
 function CertificateCarousel({
   certificates = CERTIFICATES,
@@ -345,7 +344,7 @@ export default function AboutPage() {
                 className="relative aspect-[4/3] rounded-2xl overflow-hidden ring-1 ring-black/5 shadow-soft"
               >
                 <Image
-                  src="https://res.cloudinary.com/dob666wa0/image/upload/v1761404844/reduced_tea_image_akmdq8.jpg"
+                  src="/images/about/history-image.jpg"
                   alt="Pouring a warm Wild n' Root brew"
                   fill
                   className="object-cover"
@@ -382,7 +381,7 @@ export default function AboutPage() {
                 className="relative h-[240px] md:h-[360px] rounded-2xl overflow-hidden ring-1 ring-black/5 shadow-soft"
               >
                 <Image
-                  src="https://res.cloudinary.com/dob666wa0/image/upload/v1761404846/business-hands-joined-together-teamwork_kz29bx.jpg"
+                  src="/images/about/mission-image.jpg"
                   alt="Sharing a warm brew outdoors"
                   fill
                   className="object-cover"
@@ -457,7 +456,7 @@ export default function AboutPage() {
           className="relative h-[260px] md:h-[420px] rounded-3xl overflow-hidden ring-1 ring-black/5 shadow-soft"
         >
           <Image
-            src="https://res.cloudinary.com/dob666wa0/image/upload/v1761404887/28555_vgrtpw.jpg"
+            src="/images/about/team-image.jpg"
             alt="Wild n' Root Team"
             fill
             className="object-cover"

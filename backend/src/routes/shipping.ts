@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { getAccessToken } from "../lib/eshopbox";
+import { SettingsModel } from "../modules/settings/settings.model";
 
 const router = Router();
 
@@ -54,6 +55,51 @@ router.post("/rate", async (req, res) => {
         origin: req.headers.origin,
       },
     });
+
+    // Check if free delivery is enabled in settings
+    // Use findOne() without lean() first to ensure defaults are applied, then convert to object
+    let settings = await SettingsModel.findOne();
+    if (!settings) {
+      // Create default settings if none exist
+      settings = await SettingsModel.create({});
+    }
+    const freeDelivery = settings.freeDelivery === true;
+    
+    console.log("[shipping] Checking freeDelivery setting:", {
+      hasSettings: !!settings,
+      freeDelivery,
+      settingsValue: settings.freeDelivery,
+      settingsId: settings._id?.toString(),
+    });
+
+    // If free delivery is enabled, return 0 shipping charges immediately
+    if (freeDelivery) {
+      const {
+        dropPincode,
+        deliverySpeed = "standard",
+      } = req.body || {};
+      
+      console.log("[shipping] Free delivery enabled, returning 0 charges");
+      
+      // Still return a valid response structure with 0 charges
+      return res.json({
+        zone: null,
+        carrier: "eshopboxStandard",
+        estimatedDeliveryDays: deliverySpeed === "prime" ? 1 : deliverySpeed === "express" ? 2 : 5,
+        totalShippingCharges: 0,
+        deliverySpeed,
+        breakdown: {
+          shippingBaseFreight: 0,
+          expressSurcharge: 0,
+          CODCollectionFees: 0,
+          reverseShippingFees: 0,
+          fuelSurcharge: 0,
+          doorstepQCFees: 0,
+          GST: 0,
+        },
+        freeDelivery: true,
+      });
+    }
 
     const {
       journeyType,

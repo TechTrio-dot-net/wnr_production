@@ -3,7 +3,10 @@ import mongoose, { Schema, Types, HydratedDocument, Model } from "mongoose";
 export type OrderItem = {
   product: Types.ObjectId;
   name: string;
-  price: number;
+  price: number; // final price after discount
+  originalPrice?: number; // original price before discount
+  discountPercentage?: number; // discount percentage applied (0-100)
+  discountAmount?: number; // discount amount
   qty: number;
 };
 
@@ -72,7 +75,10 @@ const OrderItemSchema = new Schema<OrderItem>(
   {
     product: { type: Schema.Types.ObjectId, ref: "Product", required: true },
     name: { type: String, required: true },
-    price: { type: Number, required: true, min: 0 },
+    price: { type: Number, required: true, min: 0 }, // final price after discount
+    originalPrice: { type: Number, min: 0 },
+    discountPercentage: { type: Number, min: 0, max: 100 },
+    discountAmount: { type: Number, min: 0 },
     qty: { type: Number, required: true, min: 1 },
   },
   { _id: false }

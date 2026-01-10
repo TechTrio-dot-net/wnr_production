@@ -19,7 +19,7 @@ router.get("/:id", mediumCache, getProduct);
 
 // Accept BOTH gallery (images[]) and a single hover file
 const uploadFields = uploadImages.fields([
-  { name: "images", maxCount: 5 },
+  { name: "images", maxCount: 7 },
   { name: "hover", maxCount: 1 },
 ]);
 

@@ -37,6 +37,7 @@ type Settings = {
   currency: string;
   currencySymbol: string;
   taxRate: number;
+  freeDelivery?: boolean; // If true, shipping charges are 0
   // NOTE: categories in Settings are no longer used for persistence;
   // the UI below uses API-backed `categories` state.
   categories: string[];
@@ -102,6 +103,7 @@ const DEFAULT_SETTINGS: Settings = {
   currency: "INR",
   currencySymbol: "₹",
   taxRate: 18,
+  freeDelivery: false,
   categories: ["Beverages", "Snacks", "Groceries"],
   company: {
     name: "",
@@ -236,6 +238,7 @@ export default function SettingsPage() {
           currency: s.currency,
           currencySymbol: s.currencySymbol,
           taxRate: s.taxRate,
+          freeDelivery: s.freeDelivery ?? false,
         }),
       });
       setS(updated);
@@ -260,6 +263,11 @@ export default function SettingsPage() {
   const setTax = (n: number) => {
     const safe = Math.max(0, Math.min(100, isNaN(n) ? 0 : n));
     const next = { ...s, taxRate: safe };
+    setS(next);
+    save(next); // Local backup
+  };
+  const setFreeDelivery = (enabled: boolean) => {
+    const next = { ...s, freeDelivery: enabled };
     setS(next);
     save(next); // Local backup
   };
@@ -472,6 +480,25 @@ export default function SettingsPage() {
               className="w-full px-3 py-2 bg-background text-foreground border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
             />
             <p className="text-xs text-muted-foreground mt-1">Preview: {pricePreview}</p>
+          </div>
+        </div>
+        <div className="mt-4 pt-4 border-t border-border">
+          <div className="flex items-center justify-between">
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">Free Delivery</label>
+              <p className="text-xs text-muted-foreground">
+                When enabled, all orders will have free shipping (shipping charges will be ₹0)
+              </p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={s.freeDelivery ?? false}
+                onChange={(e) => setFreeDelivery(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+            </label>
           </div>
         </div>
 

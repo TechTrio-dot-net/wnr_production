@@ -8,8 +8,11 @@ import { IoClose, IoBagHandleOutline } from "react-icons/io5";
 import { CiHeart } from "react-icons/ci";
 import { FaHeart } from "react-icons/fa";
 import { toast } from "sonner";
-import { products } from "../../data/Product";
 import { blogPosts, type BlogPost } from "../../data/Blog";
+import { trackAddToCart } from "@/lib/metaPixel";
+import { useProducts } from "@/hooks/useProducts";
+import { useCart } from "@/context/CartContext";
+import { useWishlist } from "@/context/WishlistContext";
 
 export type SearchDrawerProps = {
   open: boolean;
@@ -17,10 +20,6 @@ export type SearchDrawerProps = {
   onNavigate: (href: string) => void;
 };
 
-const WISHLIST_KEY = "wnr:wishlist";
-const CART_KEY = "wnr:cart";
-
-type CartLine = { id: string; qty: number };
 
 type ProductRec = {
   id: string;
@@ -29,6 +28,7 @@ type ProductRec = {
   pack?: string;
   price?: number;
   images?: string[];
+  stock?: number;
 };
 
 type BlogRec = {
@@ -38,8 +38,6 @@ type BlogRec = {
   href: string;
 };
 
-const productList = products as ProductRec[];
-
 // ✅ Build a safe blog list with href derived from slug/id (no type assertion)
 const blogList: BlogRec[] = (blogPosts as BlogPost[]).map((b) => ({
   id: b.id,
@@ -48,39 +46,34 @@ const blogList: BlogRec[] = (blogPosts as BlogPost[]).map((b) => ({
   href: b.slug ? `/blog/${b.slug}` : `/blog/${b.id}`,
 }));
 
-const loadCart = (): CartLine[] =>
-  typeof window === "undefined"
-    ? []
-    : JSON.parse(localStorage.getItem(CART_KEY) || "[]");
-
-const saveCart = (lines: CartLine[]) => {
-  try {
-    localStorage.setItem(CART_KEY, JSON.stringify(lines));
-  } catch {}
-};
-
-const addToCartLS = (id: string, qty = 1) => {
-  const cart = loadCart();
-  const i = cart.findIndex((l) => l.id === id);
-  if (i >= 0) cart[i].qty += qty;
-  else cart.unshift({ id, qty });
-  saveCart(cart);
-};
-
-const loadWishlist = (): Set<string> =>
-  typeof window === "undefined"
-    ? new Set<string>()
-    : new Set<string>(JSON.parse(localStorage.getItem(WISHLIST_KEY) || "[]"));
-
-const saveWishlist = (ids: Set<string>) => {
-  try {
-    localStorage.setItem(WISHLIST_KEY, JSON.stringify([...ids]));
-  } catch {}
-};
-
 export default function SearchDrawer({ open, onClose, onNavigate }: SearchDrawerProps) {
   const [query, setQuery] = useState("");
-  const [wish, setWish] = useState<Set<string>>(new Set());
+  const { add } = useCart();
+  const { ids: wishIds, toggle: toggleWish } = useWishlist();
+  
+  // Fetch products from API
+  const { data: apiProducts, isLoading: productsLoading } = useProducts();
+
+  // Convert API products to ProductRec format
+  const productList: ProductRec[] = useMemo(() => {
+    if (!apiProducts) return [];
+    return apiProducts.map((p) => {
+      const mainImage = p.image || "/product-placeholder.png";
+      const imagesArray: string[] = [mainImage];
+      if (p.hoverImage && p.hoverImage !== mainImage) {
+        imagesArray.push(p.hoverImage);
+      }
+      return {
+        id: p.id,
+        name: p.name,
+        image: mainImage,
+        pack: p.pack,
+        price: p.price,
+        stock: p.stock,
+        images: imagesArray,
+      };
+    });
+  }, [apiProducts]);
 
   // Lock body scroll while open
   useEffect(() => {
@@ -91,51 +84,52 @@ export default function SearchDrawer({ open, onClose, onNavigate }: SearchDrawer
     };
   }, [open]);
 
-  // Prime wishlist
-  useEffect(() => {
-    if (open) setWish(loadWishlist());
-  }, [open]);
-
   const q = query.trim().toLowerCase();
 
   const productHits = useMemo(() => {
-    if (!q) return [] as ProductRec[];
+    if (!q || !productList.length) return [] as ProductRec[];
     return productList.filter((p) =>
       [p.name, p.pack ?? "", String(p.price ?? ""), ...(p.images ?? [])]
         .join(" ")
         .toLowerCase()
         .includes(q)
     );
-  }, [q]);
+  }, [q, productList]);
 
   const blogHits = useMemo(() => {
     if (!q) return [] as BlogRec[];
     return blogList.filter((b) => [b.title, b.excerpt].join(" ").toLowerCase().includes(q));
   }, [q]);
 
-  const toggleWish = (id: string, name?: string) => {
-    setWish((prev) => {
-      const next = new Set(prev);
-      const toastId = `wish-${id}`;
-      if (next.has(id)) {
-        next.delete(id);
-        toast("Removed from wishlist", { id: toastId, description: name });
-      } else {
-        next.add(id);
-        toast.success("Added to wishlist", { id: toastId, description: name });
-      }
-      saveWishlist(next);
-      return next;
-    });
+  const handleToggleWish = async (id: string, name?: string) => {
+    try {
+      await toggleWish(id);
+      const isLiked = wishIds.has(id);
+      toast.success(isLiked ? "Removed from wishlist" : "Added to wishlist", {
+        id: `wish-${id}`,
+        description: name,
+      });
+    } catch (e: any) {
+      toast.error(e?.message || "Could not update wishlist");
+    }
   };
 
-  const addToCart = (id: string, name?: string) => {
-    addToCartLS(id, 1);
-    toast.success("Added to cart", {
-      id: `cart-${id}`,
-      description: name,
-      action: { label: "View cart", onClick: () => onNavigate("/cart") },
-    });
+  const handleAddToCart = async (id: string, name?: string) => {
+    try {
+      await add(id, 1);
+      toast.success("Added to cart", {
+        id: `cart-${id}`,
+        description: name,
+        action: { label: "View cart", onClick: () => onNavigate("/cart") },
+      });
+      // Meta Pixel: AddToCart
+      const product = productList.find((p) => p.id === id);
+      if (product) {
+        trackAddToCart([{ id: product.id, name: product.name || name, price: product.price || 0, quantity: 1 }]);
+      }
+    } catch (e: any) {
+      toast.error(e?.message || "Could not add to cart");
+    }
   };
 
   return (
@@ -181,35 +175,60 @@ export default function SearchDrawer({ open, onClose, onNavigate }: SearchDrawer
             <>
               <section>
                 <h4 className="font-semibold mb-3">Products</h4>
-                {productHits.length === 0 ? (
+                {productsLoading ? (
+                  <p className="text-sm muted">Loading products...</p>
+                ) : productHits.length === 0 ? (
                   <p className="text-sm muted">No matching products.</p>
                 ) : (
                   <ul className="space-y-3">
                     {productHits.map((p) => {
-                      const liked = wish.has(p.id);
+                      const liked = wishIds.has(p.id);
+                      const isOutOfStock = typeof p.stock === 'number' && p.stock === 0;
                       return (
-                        <li key={p.id} className="card ring-soft p-3 flex gap-3">
+                        <li key={p.id} className={`card ring-soft p-3 flex gap-3 ${isOutOfStock ? 'opacity-75' : ''}`}>
                           <button
-                            className="block relative w-16 h-16 shrink-0 rounded-lg overflow-hidden"
+                            className={`block relative w-16 h-16 shrink-0 rounded-lg overflow-hidden ${isOutOfStock ? 'grayscale opacity-60' : ''}`}
                             onClick={() => onNavigate(`/products/${p.id}`)}
                             aria-label={`Open ${p.name}`}
                           >
-                            <Image src={p.image} alt={p.name} fill className="object-cover" />
+                            <Image 
+                              src={p.image || "/product-placeholder.png"} 
+                              alt={p.name} 
+                              fill 
+                              className="object-cover"
+                              sizes="64px"
+                            />
+                            {isOutOfStock && (
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-lg">
+                                <span className="text-[8px] font-extrabold text-white bg-gray-800 px-1.5 py-0.5 rounded">
+                                  OUT
+                                </span>
+                              </div>
+                            )}
                           </button>
                           <div className="flex-1 min-w-0">
                             <button
                               onClick={() => onNavigate(`/products/${p.id}`)}
-                              className="font-semibold line-clamp-1 hover:text-[var(--wnr-berry)] text-left"
+                              className={`font-semibold line-clamp-1 hover:text-[var(--wnr-berry)] text-left ${isOutOfStock ? 'text-gray-500' : ''}`}
                             >
                               {p.name}
                             </button>
-                            <p className="text-sm muted line-clamp-2">
+                            <p className={`text-sm muted line-clamp-2 ${isOutOfStock ? 'text-gray-400' : ''}`}>
                               {p.pack ?? "15 DIP BAGS"} • ₹{(p.price ?? 399).toLocaleString("en-IN")}/-
                             </p>
                             <div className="mt-2 flex items-center gap-2">
                               <button
-                                className="cursor-pointer grid place-items-center h-8 w-8 rounded-full bg-[var(--wnr-berry)] text-white hover:opacity-90"
-                                onClick={() => addToCart(p.id, p.name)}
+                                disabled={isOutOfStock}
+                                className={`cursor-pointer grid place-items-center h-8 w-8 rounded-full bg-[var(--wnr-berry)] text-white hover:opacity-90 transition ${
+                                  isOutOfStock ? 'opacity-50 cursor-not-allowed' : ''
+                                }`}
+                                onClick={() => {
+                                  if (isOutOfStock) {
+                                    toast.error("This product is out of stock");
+                                    return;
+                                  }
+                                  handleAddToCart(p.id, p.name);
+                                }}
                                 aria-label="Add to cart"
                               >
                                 <IoBagHandleOutline size={18} />
@@ -218,7 +237,7 @@ export default function SearchDrawer({ open, onClose, onNavigate }: SearchDrawer
                                 className={`cursor-pointer grid place-items-center h-8 w-8 rounded-full ring-1 ring-black/5 transition ${
                                   liked ? "bg-[var(--wnr-pink)] text-white" : "bg-white text-[var(--wnr-berry)]"
                                 }`}
-                                onClick={() => toggleWish(p.id, p.name)}
+                                onClick={() => handleToggleWish(p.id, p.name)}
                                 aria-label={liked ? "Remove from wishlist" : "Add to wishlist"}
                                 aria-pressed={liked}
                               >

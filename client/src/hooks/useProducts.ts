@@ -19,6 +19,8 @@ interface ProductCard {
   price?: number;
   pack?: string;
   hoverImage?: string;
+  discountPercentage?: number; // 0-100, e.g., 10 for 10% off
+  stock?: number; // product stock quantity
 }
 
 function getId(p: ApiProduct): string {
@@ -54,6 +56,11 @@ const toCard = (p: ApiProduct): ProductCard => ({
       ? Number(p.price) || undefined
       : undefined,
   pack: typeof p?.pack === "string" ? p.pack : undefined,
+  discountPercentage:
+    typeof p?.discountPercentage === "number" && p.discountPercentage > 0 && p.discountPercentage <= 100
+      ? p.discountPercentage
+      : undefined,
+  stock: typeof p?.stock === "number" && p.stock >= 0 ? p.stock : undefined,
 });
 
 async function fetchProductsFromAPI(): Promise<ProductCard[]> {

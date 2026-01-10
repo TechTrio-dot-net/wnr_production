@@ -12,6 +12,7 @@ import React, {
 } from "react";
 import { buildUrl } from "@/lib/api";
 import { fetchWithAuth } from "@/lib/fetchWithAuth";
+import { hasToken } from "@/lib/token";
 
 type WishCtx = {
   ids: Set<string>;
@@ -93,20 +94,31 @@ export function WishlistProvider({ children }: { children: React.ReactNode }) {
   const inFlight = useRef<Set<string>>(new Set());
 
   const doFetch = useCallback(async () => {
-    const res = await fetchWithAuth(buildUrl("/api/wishlist/ids"), { cache: "no-store" });
-    if (res.ok) {
-      const data = await res.json().catch(() => ({}));
-      const serverIds: string[] = Array.isArray((data as any)?.ids)
-        ? (data as any).ids.map((x: any) => normId(x))
-        : [];
-      setIds(new Set(serverIds));
-      return true;
-    }
-    if (res.status === 401) {
+    // Only fetch if user has a token (is authenticated)
+    if (!hasToken()) {
       setIds(new Set());
       return true;
     }
-    return false;
+    
+    try {
+      const res = await fetchWithAuth(buildUrl("/api/wishlist/ids"), { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const serverIds: string[] = Array.isArray((data as any)?.ids)
+          ? (data as any).ids.map((x: any) => normId(x))
+          : [];
+        setIds(new Set(serverIds));
+        return true;
+      }
+      if (res.status === 401) {
+        setIds(new Set());
+        return true;
+      }
+      return false;
+    } catch {
+      // Silently handle network errors
+      return false;
+    }
   }, []);
 
   const refresh = useCallback(

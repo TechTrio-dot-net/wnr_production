@@ -224,6 +224,9 @@ router.get("/:id", async (req, res) => {
           product: it.product?._id ? String(it.product._id) : undefined,
           name: it.name,
           price: it.price,
+          ...(it.originalPrice !== undefined ? { originalPrice: it.originalPrice } : {}),
+          ...(it.discountPercentage !== undefined ? { discountPercentage: it.discountPercentage } : {}),
+          ...(it.discountAmount !== undefined ? { discountAmount: it.discountAmount } : {}),
           qty: it.qty,
           imageUrl: Array.isArray(it.product?.images) && it.product.images.length
             ? (typeof it.product.images[0] === "string"

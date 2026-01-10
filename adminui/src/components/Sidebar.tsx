@@ -53,6 +53,7 @@ const MENU = [
   { name: "Client Testimonials", href: "/client-testimonials", Icon: MessageSquare },
   { name: "Rewards", href: "/rewards", Icon: Coins },
   { name: "Coupons", href: "/coupons", Icon: Ticket },
+  { name: "Discounts", href: "/discounts", Icon: Percent },
   { name: "Inbox", href: "/inbox", Icon: Mailbox },
   { name: "Offer Strip", href: "/offer-strip", Icon: Percent },
   { name: "User Management", href: "/user-management", Icon: Users },

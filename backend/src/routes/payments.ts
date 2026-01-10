@@ -11,6 +11,7 @@ import { Product } from "../modules/catalog/products/product.model";
 import OrderModel from "../modules/orders/Order";
 import { nextSequence } from "../modules/counters/Counter";
 import { requireUser } from "../middlewares/userAuth";
+import { SettingsModel } from "../modules/settings/settings.model";
 
 const router = Router();
 
@@ -176,29 +177,56 @@ router.post("/verify", async (req, res) => {
     // 5) Load cart
     const cart = await Cart.findOne({ user: userId }).populate({
       path: "items.product",
-      select: "name price stock status",
+      select: "name price stock status discountPercentage",
     });
     if (!cart || !cart.items || cart.items.length === 0) {
       return res.status(400).json({ message: "Cart is empty" });
     }
 
-    // 6) Compute subtotal & validate stock
+    // 6) Compute subtotal with discounts & validate stock
     let subtotal = 0;
     for (const it of cart.items as any[]) {
       const p = it.product;
       if (!p) return res.status(400).json({ message: "A product in your cart is missing" });
       if (p.status !== "active") return res.status(409).json({ message: `Product ${p._id} is inactive` });
       if (typeof p.price !== "number") return res.status(422).json({ message: `Product ${p._id} price missing` });
-      if (typeof p.stock === "number" && p.stock < it.qty) {
-        return res.status(409).json({ message: `Insufficient stock for ${p._id}` });
+      // Check if product is out of stock
+      if (typeof p.stock === "number" && p.stock === 0) {
+        return res.status(409).json({ message: `Product ${p._id} is out of stock` });
       }
-      subtotal += p.price * it.qty;
+      if (typeof p.stock === "number" && p.stock < it.qty) {
+        return res.status(409).json({ message: `Insufficient stock for ${p._id}. Available: ${p.stock}, Requested: ${it.qty}` });
+      }
+      
+      // Always use product's current discount. If product no longer has discount, don't apply stored discount from add time
+      const discountPercentage = (typeof p.discountPercentage === 'number' && p.discountPercentage > 0)
+        ? p.discountPercentage
+        : undefined;
+      const originalPrice = p.price;
+      const finalPrice = typeof discountPercentage === 'number' && discountPercentage > 0
+        ? Math.round(originalPrice * (1 - discountPercentage / 100))
+        : originalPrice;
+      
+      subtotal += finalPrice * it.qty;
     }
 
     // 7) Shipping and coupon from notes
     const notes = (rOrder && rOrder.notes) || {};
+    
+    // Check if free delivery is enabled in settings
+    let settings = await SettingsModel.findOne();
+    if (!settings) {
+      settings = await SettingsModel.create({});
+    }
+    const freeDelivery = settings.freeDelivery === true;
+    
+    // If free delivery is enabled, set shipping to 0; otherwise use the value from notes
     const shippingNum = Number(notes.shipping || notes.shipping_in_inr || 0);
-    const shipping = Number.isFinite(shippingNum) ? shippingNum : 0;
+    const shipping = freeDelivery ? 0 : (Number.isFinite(shippingNum) ? shippingNum : 0);
+    
+    if (freeDelivery) {
+      console.log("[payments] Free delivery enabled, setting shipping to 0");
+    }
     
     // Handle coupon discount
     let couponDiscount = 0;
@@ -261,13 +289,31 @@ router.post("/verify", async (req, res) => {
       return res.status(422).json({ message: "Address missing or incomplete in payment metadata. Order not created." });
     }
 
-    // 10) Items for order
-    const orderItems = (cart.items as any[]).map((it) => ({
-      product: it.product._id,
-      name: it.product.name,
-      price: it.product.price,
-      qty: it.qty,
-    }));
+    // 10) Items for order with discount information
+    const orderItems = (cart.items as any[]).map((it) => {
+      const p = it.product;
+      // Always use product's current discount. If product no longer has discount, don't apply stored discount from add time
+      const discountPercentage = (typeof p.discountPercentage === 'number' && p.discountPercentage > 0)
+        ? p.discountPercentage
+        : undefined;
+      const originalPrice = p.price;
+      const finalPrice = typeof discountPercentage === 'number' && discountPercentage > 0
+        ? Math.round(originalPrice * (1 - discountPercentage / 100))
+        : originalPrice;
+      const discountAmount = originalPrice - finalPrice;
+      
+      return {
+        product: p._id,
+        name: p.name,
+        price: finalPrice, // final price after discount
+        ...(typeof discountPercentage === 'number' && discountPercentage > 0 ? {
+          originalPrice,
+          discountPercentage,
+          discountAmount,
+        } : {}),
+        qty: it.qty,
+      };
+    });
 
     // 11) Get next sequence & formatted order number
     const seq = await nextSequence("order");                 // 1, 2, 3, ...

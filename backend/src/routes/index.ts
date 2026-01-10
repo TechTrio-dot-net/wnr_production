@@ -20,6 +20,7 @@ import blogRoutes from "../modules/cms/blog/routes";
 import reviewRoutes from "../modules/reviews/review.routes";
 import publicRouter from "../routes/public";
 import offerStripAdminRouter from "./offerStripAdmin";
+import ingredientsStripAdminRouter from "./ingredientsStripAdmin";
 import shippingAdminRouter from "./shippingAdmin";
 import shipments from "./shipments";
 
@@ -115,6 +116,7 @@ router.use("/api/admin/auth", adminAuthRoutes); // this will expose /auth/me + /
 router.use("/api/admin/orders", adminOrdersRouter);
 router.use("/api/admin/users", adminUsersRouter);
 router.use("/api/admin/offer-strip", offerStripAdminRouter);
+router.use("/api/admin/ingredients-strip", ingredientsStripAdminRouter);
 
 // Dashboard
 import dashboardRouter from "./dashboard";

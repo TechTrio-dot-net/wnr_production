@@ -5,6 +5,7 @@ export interface SettingsDoc extends Document {
   currency: string;
   currencySymbol: string;
   taxRate: number;
+  freeDelivery?: boolean; // If true, shipping charges are 0
   offerStrip?: {
     enabled: boolean;
     text: string;
@@ -75,6 +76,7 @@ const SettingsSchema = new Schema<SettingsDoc>(
     currency: { type: String, default: "INR" },
     currencySymbol: { type: String, default: "₹" },
     taxRate: { type: Number, default: 18 },
+    freeDelivery: { type: Boolean, default: false },
     offerStrip: {
       enabled: { type: Boolean, default: false },
       text: { type: String, default: "" },

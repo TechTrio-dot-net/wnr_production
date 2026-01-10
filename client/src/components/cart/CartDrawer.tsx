@@ -151,48 +151,105 @@ export default function CartDrawer({
             <ul className="space-y-3">
               {items.map((it: any) => {
                 const p = it.product;
-                const lineTotal = p.price * it.qty;
+                // Calculate discounted price
+                const originalPrice = p?.price ?? it.priceAtAdd ?? 0;
+                // Always use product's current discount. If product no longer has discount, don't apply stored discount from add time
+                const discountPercentage = (typeof p?.discountPercentage === 'number' && p.discountPercentage > 0)
+                  ? p.discountPercentage
+                  : undefined;
+                // Calculate discounted price if discount exists
+                const discountedPrice = typeof discountPercentage === 'number' && discountPercentage > 0
+                  ? Math.round(originalPrice * (1 - discountPercentage / 100))
+                  : originalPrice;
+                const stock = typeof p?.stock === 'number' ? p.stock : undefined;
+                const isOutOfStock = typeof stock === 'number' && (stock === 0 || stock < it.qty);
+                const lineTotal = discountedPrice * it.qty;
+                const hasDiscount = typeof discountPercentage === 'number' && discountPercentage > 0;
                 const rawImg =
-                  Array.isArray(p.images) && p.images.length ? p.images[0] : undefined;
+                  Array.isArray(p?.images) && p.images.length ? p.images[0] : undefined;
                 const imgUrl = toImageUrl(rawImg);
 
                 return (
                   <li
                     key={it._id}
-                    className="rounded-xl border border-black/5 p-3 flex gap-3"
+                    className={`rounded-xl border p-3 flex gap-3 ${
+                      isOutOfStock 
+                        ? 'border-red-300 bg-red-50' 
+                        : 'border-black/5'
+                    }`}
                   >
                     <button
                       className="block relative w-16 h-16 shrink-0 rounded-lg overflow-hidden ring-1 ring-black/5"
-                      onClick={() => navigate(`/products/${p._id}`)}
-                      aria-label={`View ${p.name}`}
+                      onClick={() => navigate(`/products/${p?._id}`)}
+                      aria-label={`View ${p?.name}`}
                     >
                       <Image
                         src={imgUrl}
-                        alt={p.name}
+                        alt={p?.name || "Product"}
                         fill
                         sizes="64px"
-                        className="object-cover"
+                        className={`object-cover ${isOutOfStock ? 'opacity-60' : ''}`}
                       />
                     </button>
 
                     <div className="flex-1 min-w-0">
-                      <button
-                        onClick={() => navigate(`/products/${p._id}`)}
-                        className="font-semibold line-clamp-1 hover:text-[var(--wnr-berry)] text-left"
-                      >
-                        {p.name}
-                      </button>
-                      <p className="text-sm text-neutral-600">
-                        ₹ {p.price.toFixed(2)}
-                      </p>
+                      <div className="flex items-start gap-2 mb-0.5">
+                        <button
+                          onClick={() => navigate(`/products/${p?._id}`)}
+                          className={`font-semibold line-clamp-1 hover:text-[var(--wnr-berry)] text-left flex-1 ${
+                            isOutOfStock ? 'text-red-900' : ''
+                          }`}
+                        >
+                          {p?.name || "Product"}
+                        </button>
+                        {isOutOfStock && (
+                          <span className="text-xs px-2 py-0.5 bg-red-500 text-white rounded-full font-medium shrink-0">
+                            Out of Stock
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-sm text-neutral-600 mt-0.5">
+                        {hasDiscount ? (
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="line-through text-neutral-400">
+                                ₹{originalPrice.toLocaleString("en-IN")}
+                              </span>
+                              <span className="font-semibold text-[var(--wnr-berry)]">
+                                ₹{discountedPrice.toLocaleString("en-IN")}
+                              </span>
+                            </div>
+                            <span className="text-xs text-green-600 bg-green-50 px-1.5 py-0.5 rounded w-fit">
+                              {discountPercentage}% OFF
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="font-medium">₹{originalPrice.toLocaleString("en-IN")}</span>
+                        )}
+                      </div>
+
+                      {isOutOfStock && (
+                        <p className="text-xs text-red-600 font-medium mt-1 mb-2">
+                          This item is no longer available. Please remove it.
+                        </p>
+                      )}
 
                       <div className="mt-2 flex items-center gap-2">
-                        <div className="inline-flex items-center rounded-full border border-black/10 overflow-hidden">
+                        <div className={`inline-flex items-center rounded-full border overflow-hidden ${
+                          isOutOfStock ? 'border-red-300 opacity-60' : 'border-black/10'
+                        }`}>
                           <button
                             type="button"
-                            className="px-3 py-1 text-sm hover:bg-black/5"
+                            disabled={isOutOfStock || it.qty <= 1}
+                            className="px-3 py-1 text-sm hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-50"
                             onClick={async () => {
-                              if (it.qty > 1) await update(it._id, it.qty - 1);
+                              if (it.qty > 1) {
+                                try {
+                                  await update(it._id, it.qty - 1);
+                                } catch (e: any) {
+                                  toast.error(e?.message || "Failed to update quantity");
+                                }
+                              }
                             }}
                           >
                             –
@@ -202,9 +259,14 @@ export default function CartDrawer({
                           </span>
                           <button
                             type="button"
-                            className="px-3 py-1 text-sm hover:bg-black/5"
+                            disabled={isOutOfStock || (typeof stock === 'number' && stock <= it.qty)}
+                            className="px-3 py-1 text-sm hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-50"
                             onClick={async () => {
-                              await update(it._id, it.qty + 1);
+                              try {
+                                await update(it._id, it.qty + 1);
+                              } catch (e: any) {
+                                toast.error(e?.message || "Failed to update quantity");
+                              }
                             }}
                           >
                             +
@@ -213,19 +275,30 @@ export default function CartDrawer({
 
                         <button
                           type="button"
-                          className="px-3 py-1 text-sm rounded-full hover:bg-black/5"
+                          className="px-3 py-1 text-sm rounded-full hover:bg-black/5 text-red-600 hover:bg-red-50 font-medium"
                           onClick={async () => {
-                            await remove(it._id);
-                            toast("Removed from cart");
+                            try {
+                              await remove(it._id);
+                              toast.success("Removed from cart");
+                            } catch (e: any) {
+                              toast.error(e?.message || "Failed to remove item");
+                            }
                           }}
                         >
-                          Remove
+                          {isOutOfStock ? 'Remove' : 'Remove'}
                         </button>
                       </div>
                     </div>
 
-                    <div className="self-start font-semibold">
-                      {money(lineTotal)}
+                    <div className="self-start font-semibold text-right">
+                      <div className={isOutOfStock ? 'text-red-600 line-through' : ''}>
+                        {money(lineTotal)}
+                      </div>
+                      {hasDiscount && !isOutOfStock && (
+                        <div className="text-xs text-neutral-400 line-through mt-0.5">
+                          {money(originalPrice * it.qty)}
+                        </div>
+                      )}
                     </div>
                   </li>
                 );

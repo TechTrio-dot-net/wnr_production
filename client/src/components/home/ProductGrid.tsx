@@ -15,6 +15,7 @@ import { useProducts } from "@/hooks/useProducts";
 import Head from "next/head";
 import { usePathname } from "next/navigation";
 import ItemListJsonLd from "@/components/seo/ItemListJsonLd";
+import { trackAddToCart } from "@/lib/metaPixel";
 
 /* ---------------- Types & helpers ---------------- */
 type ImageObject = { url?: string | null; [k: string]: unknown };
@@ -39,6 +40,8 @@ type ProductCard = {
   hoverImage?: string;
   pack?: string;
   price?: number;
+  discountPercentage?: number; // 0-100, e.g., 10 for 10% off
+  stock?: number; // product stock quantity
 };
 
 const getId = (p: ApiProduct | null | undefined): string =>
@@ -96,6 +99,11 @@ const toCard = (p: ApiProduct): ProductCard => ({
       ? Number(p.price) || undefined
       : undefined,
   pack: typeof p?.pack === "string" ? p.pack : undefined,
+  discountPercentage:
+    typeof p?.discountPercentage === "number" && p.discountPercentage > 0 && p.discountPercentage <= 100
+      ? p.discountPercentage
+      : undefined,
+  stock: typeof p?.stock === "number" && p.stock >= 0 ? p.stock : undefined,
 });
 
 async function fetchProductsFromDB(): Promise<ProductCard[]> {
@@ -114,6 +122,8 @@ const Card = React.memo(function Card({
   pack,
   price,
   hoverImage,
+  discountPercentage,
+  stock,
   liked,
   onAdd,
   onToggleWish,
@@ -123,6 +133,8 @@ const Card = React.memo(function Card({
   onToggleWish: (id: string, name?: string) => void;
 }) {
   const hasHover = Boolean(hoverImage);
+  const [isHovered, setIsHovered] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
 
   const onHeartClick = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -130,165 +142,249 @@ const Card = React.memo(function Card({
     onToggleWish(id, name);
   }, [id, name, onToggleWish]);
 
+  // Calculate discounted price
+  const originalPrice = price ?? 399;
+  const finalPrice = discountPercentage && discountPercentage > 0 
+    ? Math.round(originalPrice * (1 - discountPercentage / 100))
+    : originalPrice;
+
+  // Check if product is out of stock
+  const isOutOfStock = typeof stock === 'number' && stock <= 0;
+
+  // Get product color based on name (for background)
+  const getProductColor = (productName: string) => {
+    const name = productName.toLowerCase();
+    if (name.includes('digestive')) return 'bg-[#FF6B35]'; // Orange
+    if (name.includes('sugarwise')) return 'bg-[#8BBF6F]'; // Green
+    if (name.includes('slim')) return 'bg-[#F5D76E]'; // Yellow
+    if (name.includes('gutease')) return 'bg-[#F2B3B3]'; // Pink
+    return 'bg-[var(--wnr-orange)]'; // Default orange
+  };
+
+  const productBgColor = getProductColor(name);
+
   return (
-    <Link key={id} href={`/products/${id}`} className="block group/card">
-      <div className="group relative w-full overflow-hidden rounded-2xl bg-white ring-1 ring-black/5 shadow-soft transform-gpu transition-all duration-300 ease-out will-change-transform hover:shadow-xl hover:-translate-y-0.5 hover:scale-[1.02] md:hover:scale-[1.03] cursor-pointer group-hover/card:rounded-b-2xl">
-        {/* Image stack (background image stays the same on hover) */}
-        <div className="relative aspect-[4/5] md:aspect-[4/4.5]">
-          <Image
-            src={image}
-            alt={name}
-            fill
-            className="object-cover opacity-100"
-            sizes="(min-width:1024px) 280px, (min-width:768px) 240px, 88vw"
-            priority={false}
-            loading="lazy"
-            placeholder="blur"
-            blurDataURL="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k="
-          />
-          {/* Wishlist toggle — MOBILE ONLY */}
-          <button
-            type="button"
-            aria-label={liked ? "Remove from wishlist" : "Add to wishlist"}
-            aria-pressed={liked}
-            onClick={onHeartClick}
-            className={`md:hidden absolute top-2 right-2 z-10 grid place-items-center h-9 w-9 rounded-full backdrop-blur bg-white/90 ring-1 ring-black/10 transition ${
-              liked ? "text-[var(--wnr-pink)]" : "text-[var(--wnr-berry)]"
-            } hover:bg-white`}
-          >
-            {liked ? <FaHeart size={16} /> : <CiHeart size={18} />}
-          </button>
-        </div>
-
-        {/* Hover tint (desktop only) */}
-        <div className="pointer-events-none absolute inset-0 transition-all duration-300 ease-out bg-black/0 group-hover:bg-black/20 backdrop-blur-0 group-hover:backdrop-blur-[2px] hidden md:block" />
-
-        {/* Desktop info/actions on hover */}
-        <div className="pointer-events-none absolute inset-0 p-3 md:p-4 flex-col justify-between transition-opacity duration-300 z-[10] opacity-0 group-hover:flex group-hover:opacity-100 hidden md:flex">
-          {/* Product name at top-left */}
-          <div className="absolute left-3 md:left-4 top-3 md:top-4 max-w-[60%] z-[25]">
-            <h4 className="text-white text-sm md:text-base font-semibold leading-5 tracking-wide uppercase drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">
-              {name}
-            </h4>
-          </div>
-
-          {/* Floating pack preview (desktop only) - positioned below product name, in upper-left area */}
-          {hasHover && (
-            <div className="hidden md:block pointer-events-none absolute left-3 md:left-4 top-14 md:top-20 w-[80px] md:w-[95px] aspect-[3/4] z-[20] opacity-0 scale-95 transition-all duration-300 ease-out group-hover:opacity-100 group-hover:scale-100">
-              <div className="relative w-full h-full">
+    <div 
+      className="group/card relative w-full"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <Link href={`/products/${id}`} className="block">
+          <div className={`relative w-full overflow-hidden rounded-2xl bg-white ring-1 ring-black/5 shadow-md transform-gpu transition-all duration-500 ease-out will-change-transform ${isOutOfStock ? 'opacity-75 cursor-not-allowed' : 'hover:shadow-2xl hover:-translate-y-2 hover:scale-[1.02] cursor-pointer'}`}>
+          {/* Top Section: Product Display Area with Colored Background */}
+          <div className={`relative ${productBgColor} aspect-[4/5] md:aspect-[5/5.5] overflow-hidden transition-all duration-500 ${isHovered && !isOutOfStock ? 'brightness-105' : isOutOfStock ? 'grayscale opacity-60' : ''}`}>
+            {/* Animated background gradient overlay on hover */}
+            <div className={`absolute inset-0 bg-gradient-to-br from-white/0 via-white/0 to-white/0 transition-all duration-500 ${isHovered ? 'from-white/10 via-white/5 to-white/0' : ''}`} />
+            
+            {/* Product Image with zoom effect - fills entire card area */}
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className={`relative w-full h-full transition-transform duration-700 ease-out ${isHovered ? 'scale-110 md:scale-115' : 'scale-100'}`}>
+                {/* Main Product Image */}
                 <Image
-                  src={hoverImage as string}
-                  alt={`${name} pack`}
+                  src={image}
+                  alt={name}
                   fill
-                  className="object-contain drop-shadow-[0_6px_16px_rgba(0,0,0,0.35)]"
-                  sizes="95px"
+                  className={`object-contain md:object-cover drop-shadow-2xl transition-all duration-700 ${isHovered && hasHover ? 'opacity-90 blur-sm' : isHovered ? 'brightness-110' : ''}`}
+                  sizes="(min-width:1024px) 320px, (min-width:768px) 240px, 100vw"
+                  priority={false}
+                  loading="lazy"
+                  placeholder="blur"
+                  blurDataURL="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k="
+                  onLoad={() => setImageLoaded(true)}
                 />
+                {/* Hover Image (Sachet) - Desktop Only, Small and Centered */}
+                {hasHover && hoverImage && (
+                  <div className={`hidden md:flex absolute inset-0 items-center justify-center transition-all duration-700 z-10 ${isHovered ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                    <div className="relative w-[35%] h-[35%]">
+                      <Image
+                        src={hoverImage}
+                        alt={`${name} - Sachet`}
+                        fill
+                        className="object-contain drop-shadow-2xl"
+                        sizes="(min-width:1024px) 144px, (min-width:768px) 108px"
+                        priority={false}
+                        loading="lazy"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
-          )}
 
-          {/* Price, pack, and actions at bottom with padding to ensure no overlap */}
-          <div className="flex items-end justify-between mt-auto pb-3">
-            <div className="text-white">
-              <p className="text-[12px] md:text-sm font-semibold leading-4 tracking-wide uppercase">
-                {pack ?? "15 DIP BAGS"}
-              </p>
-              <p className="text-[16px] md:text-[20px] font-bold leading-6">
-                ₹{(price ?? 399).toLocaleString("en-IN")}/-
-              </p>
+            {/* Out of Stock Badge */}
+            {isOutOfStock && (
+              <div className="absolute top-3 left-3 z-20">
+                <div className="relative">
+                  <div className="relative bg-gradient-to-br from-gray-600 via-gray-700 to-gray-800 text-white text-[10px] sm:text-xs font-extrabold px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg shadow-[0_4px_12px_rgba(0,0,0,0.4)]">
+                    <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-white/10 via-transparent to-transparent pointer-events-none" />
+                    <div className="relative flex items-center gap-1">
+                      <span className="leading-none tracking-tight">OUT OF STOCK</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Discount Badge - Floating Designer Style with animation - Only show if discount > 0 */}
+            {!isOutOfStock && typeof discountPercentage === 'number' && discountPercentage > 0 && (
+              <div className={`absolute top-3 left-3 z-20 transition-all duration-500 ${isHovered ? 'scale-110 rotate-3' : 'scale-100 rotate-0'}`}>
+                <div className="relative">
+                  {/* Main badge with gradient */}
+                  <div className="relative bg-gradient-to-br from-red-500 via-red-600 to-red-700 text-white text-[10px] sm:text-xs font-extrabold px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg shadow-[0_4px_12px_rgba(239,68,68,0.4)] hover:shadow-[0_6px_16px_rgba(239,68,68,0.6)] transition-shadow duration-300">
+                    {/* Shine effect */}
+                    <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-white/20 via-transparent to-transparent pointer-events-none" />
+                    
+                    {/* Badge content */}
+                    <div className="relative flex items-center gap-1">
+                      <span className="leading-none tracking-tight">{discountPercentage}%</span>
+                      <span className="text-[8px] sm:text-[10px] leading-none opacity-90">OFF</span>
+                    </div>
+                    
+                    {/* Decorative corner accent */}
+                    <div className="absolute -top-1 -right-1 w-2 h-2 bg-white rounded-full opacity-80 shadow-sm" />
+                  </div>
+                  
+                  {/* Floating glow effect */}
+                  <div className={`absolute inset-0 bg-red-500/30 rounded-lg blur-md -z-10 transition-all duration-500 ${isHovered ? 'animate-pulse scale-110' : 'animate-pulse'}`} />
+                </div>
+              </div>
+            )}
+
+            {/* Wishlist Heart Icon - Top Right with enhanced interaction */}
+            <button
+              type="button"
+              aria-label={liked ? "Remove from wishlist" : "Add to wishlist"}
+              aria-pressed={liked}
+              onClick={onHeartClick}
+              className={`absolute top-3 right-3 z-20 grid place-items-center h-10 w-10 rounded-full bg-white/95 backdrop-blur-sm ring-1 ring-black/10 transition-all duration-300 hover:scale-125 active:scale-95 ${
+                liked ? "text-[var(--wnr-pink)] bg-pink-50 ring-pink-200" : "text-[var(--wnr-berry)] hover:bg-white"
+              } shadow-lg hover:shadow-xl`}
+            >
+              {liked ? <FaHeart size={18} className="animate-pulse" /> : <CiHeart size={20} />}
+            </button>
+
+          </div>
+
+          {/* Bottom Section: Product Info & Actions UI */}
+          <div className="bg-gradient-to-b from-gray-50 to-gray-100 p-4 md:p-3 space-y-2.5 md:space-y-1.5 transition-all duration-500 border-t border-gray-200/50">
+            {/* Product Name */}
+            <div className="group/name">
+              <h3 className="!text-xl !md:text-sm font-extrabold leading-tight tracking-tight !text-[var(--wnr-berry)] uppercase line-clamp-2 transition-colors duration-300">
+                {name}
+              </h3>
             </div>
-            <div className="flex items-center text-lg gap-2 pointer-events-auto">
+
+            {/* Pack Info and Price in same line */}
+            <div className="flex items-center justify-between gap-2 py-0.5 md:py-0">
+              {/* Pack Info with icon-like styling */}
+              <div className="flex items-center gap-2">
+                <div className="w-1 h-3 !md:h-3.5 bg-[var(--wnr-berry)] rounded-full" />
+                <p className="text-xs !md:text-xs font-semibold text-black/70 uppercase tracking-wide">
+                  {pack ?? "15 DIP BAGS"}
+                </p>
+              </div>
+
+              {/* Price with enhanced styling */}
+              <div className="flex items-baseline gap-2 md:gap-1.5">
+                {typeof discountPercentage === 'number' && discountPercentage > 0 ? (
+                  <>
+                    <span className="text-base !md:text-sm text-gray-400 line-through font-medium">
+                      ₹{originalPrice.toLocaleString("en-IN")}
+                    </span>
+                    <span className={`text-2xl md:text-3xl font-extrabold ${isOutOfStock ? 'text-gray-400' : 'text-[var(--wnr-berry)]'}`}>
+                      ₹{finalPrice.toLocaleString("en-IN")}
+                    </span>
+                  </>
+                ) : (
+                  <span className={`text-2xl md:text-3xl font-extrabold ${isOutOfStock ? 'text-gray-400' : 'text-[var(--wnr-berry)]'}`}>
+                    ₹{originalPrice.toLocaleString("en-IN")}
+                  </span>
+                )}
+              </div>
+            </div>
+            
+            {/* Savings badge - below if discount exists */}
+            {typeof discountPercentage === 'number' && discountPercentage > 0 && (
+              <div className="flex items-center justify-end pt-0.5">
+                <span className="text-xs md:text-[10px] font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded">
+                  Save ₹{Math.round(originalPrice - finalPrice)}
+                </span>
+              </div>
+            )}
+
+            {/* Action Buttons with enhanced interactions */}
+            <div className="flex items-stretch gap-2.5 pt-1.5 md:pt-1">
+              {/* Add to Cart Button */}
               <button
                 type="button"
-                aria-label="Add to cart"
-                className="text-white cursor-pointer hover:opacity-80 transition-opacity"
+                disabled={isOutOfStock}
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
+                  if (isOutOfStock) {
+                    toast.error("This product is out of stock");
+                    return;
+                  }
                   onAdd(id, name);
                 }}
+                className={`group/btn flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-[var(--wnr-berry)] to-[var(--wnr-berry-700)] text-white py-3.5 md:py-4 rounded-xl font-semibold text-sm md:text-base transition-all duration-300 ${
+                  isOutOfStock
+                    ? 'opacity-50 cursor-not-allowed'
+                    : 'hover:from-[var(--wnr-berry-700)] hover:to-[var(--wnr-berry-900)] active:scale-[0.97] shadow-lg hover:shadow-xl hover:-translate-y-0.5 cursor-pointer'
+                } relative overflow-hidden`}
               >
-                <IoBagHandleOutline size={20} />
+                {/* Button shine effect */}
+                {!isOutOfStock && (
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover/btn:translate-x-full transition-transform duration-700" />
+                )}
+                <IoBagHandleOutline className="w-5 h-5 relative z-10 transition-transform duration-300 group-hover/btn:scale-110" />
+                <span className="relative z-10 hidden sm:inline">
+                  {isOutOfStock ? 'Out of Stock' : 'Add to Cart'}
+                </span>
+                <span className="relative z-10 sm:hidden">
+                  {isOutOfStock ? 'Out' : 'Add'}
+                </span>
               </button>
 
-              {/* Desktop wishlist action (inside hover) */}
+              {/* Buy Now Button */}
               <button
                 type="button"
-                aria-label={liked ? "Remove from wishlist" : "Add to wishlist"}
-                aria-pressed={liked}
-                className={`transition hover:opacity-80 ${liked ? "text-[var(--wnr-pink)]" : "text-white"} cursor-pointer`}
+                disabled={isOutOfStock}
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  onHeartClick(e);
+                  if (isOutOfStock) {
+                    toast.error("This product is out of stock");
+                    return;
+                  }
+                  onAdd(id, name);
+                  window.location.href = `/checkout?mode=buynow&id=${encodeURIComponent(
+                    id
+                  )}&qty=1`;
                 }}
+                className={`group/btn flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-yellow-400 to-yellow-500 text-black py-3.5 md:py-4 rounded-xl font-semibold text-sm md:text-base transition-all duration-300 ${
+                  isOutOfStock
+                    ? 'opacity-50 cursor-not-allowed'
+                    : 'hover:from-yellow-500 hover:to-yellow-600 active:scale-[0.97] shadow-lg hover:shadow-xl hover:-translate-y-0.5 cursor-pointer'
+                } relative overflow-hidden`}
               >
-                {liked ? <FaHeart size={24} /> : <CiHeart size={20} />}
+                {/* Button shine effect */}
+                {!isOutOfStock && (
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover/btn:translate-x-full transition-transform duration-700" />
+                )}
+                <IoFlashOutline className="w-5 h-5 relative z-10 transition-transform duration-300 group-hover/btn:scale-110 group-hover/btn:rotate-12" />
+                <span className="relative z-10">
+                  {isOutOfStock ? 'Out of Stock' : 'Buy Now'}
+                </span>
               </button>
             </div>
+
           </div>
+
+          <span className="sr-only">{name}</span>
         </div>
-
-        {/* ✅ Mobile info footer */}
-        <div className="md:hidden p-3">
-          <div className="text-lg font-extrabold leading-tight tracking-tight line-clamp-2">
-            {name}
-          </div>
-          <div className="text-[12px] opacity-60 mt-1">
-            {pack ?? "15 DIP BAGS"}
-          </div>
-          <div className="mt-1.5 text-lg font-semibold">
-            ₹{(price ?? 399).toLocaleString("en-IN")}
-          </div>
-
-          {/* Buttons Row */}
-          <div className="mt-3 flex items-stretch gap-2">
-            {/* 🛒 Add to Cart */}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onAdd(id, name);
-              }}
-              className="flex-1 flex items-center justify-center gap-2 bg-[var(--wnr-berry)] text-white py-3 rounded-lg font-semibold transition active:scale-[0.98] disabled:opacity-60"
-            >
-              <IoBagHandleOutline className="w-5 h-5" /> Add to Cart
-            </button>
-
-            {/* ⚡ Buy Now */}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onAdd(id, name);
-                window.location.href = `/checkout?mode=buynow&id=${encodeURIComponent(
-                  id
-                )}&qty=1`;
-              }}
-              className="flex-1 flex items-center justify-center gap-2 bg-yellow-500 text-black py-3 rounded-lg font-semibold hover:bg-yellow-600 transition active:scale-[0.98] disabled:opacity-60"
-            >
-              <IoFlashOutline className="w-5 h-5" /> Buy Now
-            </button>
-          </div>
-        </div>
-
-        <span className="sr-only">{name}</span>
-      </div>
-
-      {/* Desktop info strip - initially visible, hides on hover and card expands to fill its space */}
-      <div className="hidden md:block overflow-hidden transition-all duration-500 ease-out group-hover/card:max-h-0 group-hover/card:opacity-0 group-hover/card:p-0 group-hover/card:mt-0">
-        <div className="bg-white rounded-b-2xl p-3 flex items-center justify-between gap-2 ring-1 ring-black/5 shadow-soft">
-          <div className="text-base font-extrabold leading-tight tracking-tight line-clamp-1 flex-1 text-[var(--wnr-text)]">
-            {name}
-          </div>
-          <div className="text-lg font-semibold whitespace-nowrap text-[var(--wnr-berry)]">
-            ₹{(price ?? 399).toLocaleString("en-IN")}
-          </div>
-        </div>
-      </div>
-    </Link>
+      </Link>
+    </div>
   );
 }, (prevProps, nextProps) => {
   // Custom comparison for memoization
@@ -296,7 +392,9 @@ const Card = React.memo(function Card({
     prevProps.id === nextProps.id &&
     prevProps.liked === nextProps.liked &&
     prevProps.image === nextProps.image &&
-    prevProps.price === nextProps.price
+    prevProps.price === nextProps.price &&
+    prevProps.stock === nextProps.stock &&
+    prevProps.discountPercentage === nextProps.discountPercentage
   );
 });
 
@@ -510,6 +608,7 @@ export default function ProductsGrid() {
   
   useEffect(() => {
     if (allProducts) {
+      // Show all products (including out of stock), take first 5
       setItems(allProducts.slice(0, 5));
     }
   }, [allProducts]);
@@ -546,11 +645,16 @@ export default function ProductsGrid() {
       try {
         await add(id, 1);
         toast.success("Added to cart", { description: name });
+        // Meta Pixel: AddToCart
+        const product = items.find((p) => p.id === id);
+        if (product) {
+          trackAddToCart([{ id: product.id, name: product.name || name, price: product.price || 0, quantity: 1 }]);
+        }
       } catch (e: any) {
         toast.error(e?.message || "Could not add to cart");
       }
     },
-    [add]
+    [add, items]
   );
 
   const firstThree = useMemo(() => items.slice(0, 3), [items]);
@@ -593,14 +697,17 @@ export default function ProductsGrid() {
             <div className="md:hidden mt-6 -mx-4 px-0">
               <div className="flex justify-center">
                 <div className="w-[88%] max-w-[420px] px-4">
-                  <div className="rounded-2xl ring-1 ring-black/5 shadow-soft bg-white overflow-hidden">
+                  <div className="rounded-2xl ring-1 ring-black/5 shadow-md bg-white overflow-hidden">
                     <div className="animate-pulse">
-                      <div className="aspect-[4/5] bg-black/5" />
-                      <div className="p-3 space-y-2">
-                        <div className="h-5 bg-black/5 rounded w-3/4" />
-                        <div className="h-3 bg-black/5 rounded w-1/2" />
-                        <div className="h-4 bg-black/5 rounded w-1/3 mt-2" />
-                        <div className="h-10 bg-black/5 rounded mt-3" />
+                      <div className="aspect-[4/5] bg-gradient-to-br from-orange-200 to-orange-300" />
+                      <div className="bg-gradient-to-b from-gray-50 to-gray-100 p-4 space-y-3">
+                        <div className="h-6 bg-black/10 rounded w-3/4" />
+                        <div className="h-4 bg-black/5 rounded w-1/2" />
+                        <div className="h-8 bg-black/10 rounded w-1/3" />
+                        <div className="flex gap-2.5 pt-2">
+                          <div className="flex-1 h-12 bg-black/10 rounded-xl" />
+                          <div className="flex-1 h-12 bg-black/10 rounded-xl" />
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -609,15 +716,20 @@ export default function ProductsGrid() {
             </div>
 
             {/* Desktop: Grid skeletons */}
-            <div className="hidden md:grid mt-6 grid-cols-[repeat(3,240px)] lg:grid-cols-[repeat(3,280px)] gap-3 md:gap-5 justify-center">
+            <div className="hidden md:grid mt-6 grid-cols-[repeat(3,260px)] lg:grid-cols-[repeat(3,300px)] gap-3 md:gap-5 justify-center">
               {Array.from({ length: 3 }).map((_, i) => (
-                <div key={`s1-${i}`} className="w-[240px] lg:w-[280px]">
-                  <div className="rounded-2xl ring-1 ring-black/5 shadow-soft bg-white overflow-hidden">
+                <div key={`s1-${i}`} className="w-[260px] lg:w-[300px]">
+                  <div className="rounded-2xl ring-1 ring-black/5 shadow-md bg-white overflow-hidden">
                     <div className="animate-pulse">
-                      <div className="aspect-square bg-black/5" />
-                      <div className="p-3 space-y-2">
-                        <div className="h-4 bg-black/5 rounded w-2/3" />
-                        <div className="h-3 bg-black/5 rounded w-1/3" />
+                      <div className="aspect-[5/5.5] bg-gradient-to-br from-orange-200 to-orange-300" />
+                      <div className="bg-gradient-to-b from-gray-50 to-gray-100 p-3 space-y-1.5">
+                        <div className="h-5 bg-black/10 rounded w-3/4" />
+                        <div className="h-4 bg-black/5 rounded w-1/2" />
+                        <div className="h-6 bg-black/10 rounded w-1/3" />
+                        <div className="flex gap-2.5 pt-2">
+                          <div className="flex-1 h-12 bg-black/10 rounded-xl" />
+                          <div className="flex-1 h-12 bg-black/10 rounded-xl" />
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -625,15 +737,20 @@ export default function ProductsGrid() {
               ))}
             </div>
 
-            <div className="hidden md:grid mt-4 grid-cols-[repeat(2,240px)] lg:grid-cols-[repeat(2,280px)] gap-3 md:gap-5 justify-center">
+            <div className="hidden md:grid mt-4 grid-cols-[repeat(2,280px)] lg:grid-cols-[repeat(2,320px)] gap-3 md:gap-5 justify-center">
               {Array.from({ length: 2 }).map((_, i) => (
-                <div key={`s2-${i}`} className="w-[240px] lg:w-[280px]">
-                  <div className="rounded-2xl ring-1 ring-black/5 shadow-soft bg-white overflow-hidden">
+                <div key={`s2-${i}`} className="w-[280px] lg:w-[320px]">
+                  <div className="rounded-2xl ring-1 ring-black/5 shadow-md bg-white overflow-hidden">
                     <div className="animate-pulse">
-                      <div className="aspect-square bg-black/5" />
-                      <div className="p-3 space-y-2">
-                        <div className="h-4 bg-black/5 rounded w-2/3" />
-                        <div className="h-3 bg-black/5 rounded w-1/3" />
+                      <div className="aspect-[5/5.5] bg-gradient-to-br from-orange-200 to-orange-300" />
+                      <div className="bg-gradient-to-b from-gray-50 to-gray-100 p-4 md:p-5 space-y-3">
+                        <div className="h-6 bg-black/10 rounded w-3/4" />
+                        <div className="h-4 bg-black/5 rounded w-1/2" />
+                        <div className="h-8 bg-black/10 rounded w-1/3" />
+                        <div className="flex gap-2.5 pt-2">
+                          <div className="flex-1 h-12 bg-black/10 rounded-xl" />
+                          <div className="flex-1 h-12 bg-black/10 rounded-xl" />
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -645,7 +762,7 @@ export default function ProductsGrid() {
           <div className="mt-8 text-center opacity-70">No products found.</div>
         ) : (
           <>
-            {/* ✅ MOBILE: one-card infinite slider */}
+            {/* ✅ MOBILE: one-card infinite slider with same card design */}
             <MobileCarousel
               items={items}
               has={hasWish}
@@ -653,8 +770,8 @@ export default function ProductsGrid() {
               onToggleWish={onToggleWish}
             />
 
-            {/* ✅ DESKTOP/TABLET — 3 + 2 grid */}
-            <div className="hidden md:grid mt-6 grid-cols-[repeat(3,240px)] lg:grid-cols-[repeat(3,280px)] gap-3 md:gap-5 justify-center">
+            {/* ✅ DESKTOP/TABLET — 3 + 2 grid with same card design */}
+            <div className="hidden md:grid mt-6 grid-cols-[repeat(3,280px)] lg:grid-cols-[repeat(3,320px)] gap-4 md:gap-6 lg:gap-8 justify-center">
               {firstThree.map((p) => (
                 <Card
                   key={p.id}
@@ -667,7 +784,7 @@ export default function ProductsGrid() {
             </div>
 
             {lastTwo.length > 0 && (
-              <div className="hidden md:grid mt-4 grid-cols-[repeat(2,240px)] lg:grid-cols-[repeat(2,280px)] gap-3 md:gap-5 justify-center">
+              <div className="hidden md:grid mt-4 grid-cols-[repeat(2,280px)] lg:grid-cols-[repeat(2,320px)] gap-4 md:gap-6 lg:gap-8 justify-center">
                 {lastTwo.map((p) => (
                   <Card
                     key={p.id}

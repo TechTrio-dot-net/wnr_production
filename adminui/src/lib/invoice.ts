@@ -203,13 +203,20 @@ export async function renderInvoicePDF(order: AdminOrderDetail) {
   doc.line(left, y, right, y);
 
   // -------------------- Items Table --------------------
-  const rows = order.items.map((it, i) => [
-    String(i + 1),
-    it.name || "Item",
-    String(it.qty || 1),
-    cur(it.price),
-    cur((it.qty || 1) * (it.price || 0)),
-  ]);
+  // Show original price and discount if applicable
+  const rows = order.items.map((it, i) => {
+    const hasDiscount = typeof it.originalPrice === 'number' && it.originalPrice > it.price;
+    const unitPriceDisplay = hasDiscount 
+      ? `${cur(it.originalPrice)} → ${cur(it.price)}`
+      : cur(it.price);
+    return [
+      String(i + 1),
+      it.name || "Item",
+      String(it.qty || 1),
+      unitPriceDisplay,
+      cur((it.qty || 1) * (it.price || 0)),
+    ];
+  });
 
   autoTable(doc, {
     startY: y + 12,
@@ -261,6 +268,19 @@ export async function renderInvoicePDF(order: AdminOrderDetail) {
   doc.text(cur(sub), right, ty, { align: "right" });
   ty += 14;
   
+  // Shipping - show "FREE" if shipping is 0
+  doc.text("Shipping:", summaryLeft, ty);
+  if (shipCost === 0) {
+    doc.setTextColor(0, 150, 0); // Green color for FREE
+    doc.setFont("helvetica", "bold");
+    doc.text("FREE", right, ty, { align: "right" });
+    doc.setTextColor(30); // Reset color
+    doc.setFont("helvetica", "normal");
+  } else {
+    doc.text(cur(shipCost), right, ty, { align: "right" });
+  }
+  ty += 14;
+  
   // Coupon discount if applicable
   if (couponDiscount > 0 && order.coupon) {
     doc.text(`Coupon (${order.coupon.code}):`, summaryLeft, ty);
@@ -270,9 +290,7 @@ export async function renderInvoicePDF(order: AdminOrderDetail) {
     ty += 14;
   }
   
-  doc.text("Shipping:", summaryLeft, ty);
-  doc.text(cur(shipCost), right, ty, { align: "right" });
-  ty += 18;
+  ty += 4; // Add spacing before grand total
   
   // Grand total with emphasis
   doc.setDrawColor(180);

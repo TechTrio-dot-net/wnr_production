@@ -17,6 +17,7 @@ import { useWishlist } from "@/context/WishlistContext";
 import ItemListJsonLd from "@/components/seo/ItemListJsonLd";
 import BreadcrumbsJsonLd from "@/components/seo/BreadcrumbsJsonLd";
 import { trackAddToCart } from "@/lib/ga";
+import { trackAddToCart as trackMetaAddToCart } from "@/lib/metaPixel";
 import { ProductGridSkeleton } from "@/components/common/SkeletonLoader";
 
 /* ------------ types ------------ */
@@ -27,6 +28,8 @@ type ProductRec = {
   price?: number;
   description?: string;
   pack?: string;
+  discountPercentage?: number; // 0-100, e.g., 10 for 10% off
+  stock?: number;
 };
 
 type ImageObject = { url?: string | null; [k: string]: unknown };
@@ -79,6 +82,11 @@ async function fetchProductsFromApi(): Promise<ProductRec[]> {
     price: asRupees(p?.price),
     description: typeof p?.description === "string" ? p.description : undefined,
     pack: typeof p?.pack === "string" ? p.pack : undefined,
+    discountPercentage:
+      typeof p?.discountPercentage === "number" && p.discountPercentage > 0 && p.discountPercentage <= 100
+        ? p.discountPercentage
+        : undefined,
+    stock: typeof p?.stock === "number" ? p.stock : undefined,
   }));
 }
 
@@ -143,7 +151,7 @@ export default function ProductsPage() {
   }, [readWishlistLocal]);
   /* ===== /Local mirror ===== */
 
-  // Filter products with debounced search
+  // Filter products with debounced search (show all products including out of stock)
   const list = useMemo(() => {
     if (!allProducts) return [];
     
@@ -170,6 +178,8 @@ export default function ProductsPage() {
         await add(id, qty);
         toast.success("Added to cart", { description: name });
         trackAddToCart([{ item_id: id, item_name: name, price: undefined, quantity: qty }]);
+        // Meta Pixel: AddToCart (price will be 0 if not available, but still track the event)
+        trackMetaAddToCart([{ id, name, price: 0, quantity: qty }]);
       } catch (e: any) {
         toast.error(e?.message || "Could not add to cart");
       }
@@ -236,13 +246,14 @@ export default function ProductsPage() {
               const liked = wlLocal.has(idStr) || wishIds.has(idStr);
               const pack = p.pack ?? "15 DIP BAGS";
               const price = p.price ?? 399;
+              const isOutOfStock = typeof p.stock === 'number' && p.stock === 0;
 
               return (
                 <li
                   key={idStr}
-                  className="rounded-2xl ring-1 ring-black/5 shadow-soft bg-white overflow-hidden group"
+                  className={`rounded-2xl ring-1 ring-black/5 shadow-soft bg-white overflow-hidden group ${isOutOfStock ? 'opacity-75' : ''}`}
                 >
-                  <div className="relative aspect-square">
+                  <div className={`relative aspect-square ${isOutOfStock ? 'grayscale opacity-60' : ''}`}>
                     <Link href={`/products/${idStr}`} className="absolute inset-0 block" prefetch>
                       <Image
                         src={p.image}
@@ -255,6 +266,43 @@ export default function ProductsPage() {
                         blurDataURL="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k="
                       />
                     </Link>
+                    {/* Out of Stock Badge */}
+                    {isOutOfStock && (
+                      <div className="absolute top-3 left-3 z-20">
+                        <div className="relative">
+                          <div className="relative bg-gradient-to-br from-gray-600 via-gray-700 to-gray-800 text-white text-[10px] sm:text-xs font-extrabold px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg shadow-[0_4px_12px_rgba(0,0,0,0.4)]">
+                            <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-white/10 via-transparent to-transparent pointer-events-none" />
+                            <div className="relative flex items-center gap-1">
+                              <span className="leading-none tracking-tight">OUT OF STOCK</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {/* Discount Badge - Floating Designer Style */}
+                    {!isOutOfStock && p.discountPercentage && p.discountPercentage > 0 && (
+                      <div className="absolute top-3 left-3 z-20">
+                        <div className="relative">
+                          {/* Main badge with gradient */}
+                          <div className="relative bg-gradient-to-br from-red-500 via-red-600 to-red-700 text-white text-[10px] sm:text-xs font-extrabold px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg shadow-[0_4px_12px_rgba(239,68,68,0.4)] transform transition-all duration-300 hover:scale-105">
+                            {/* Shine effect */}
+                            <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-white/20 via-transparent to-transparent pointer-events-none" />
+                            
+                            {/* Badge content */}
+                            <div className="relative flex items-center gap-1">
+                              <span className="leading-none tracking-tight">{p.discountPercentage}%</span>
+                              <span className="text-[8px] sm:text-[10px] leading-none opacity-90">OFF</span>
+                            </div>
+                            
+                            {/* Decorative corner accent */}
+                            <div className="absolute -top-1 -right-1 w-2 h-2 bg-white rounded-full opacity-80 shadow-sm" />
+                          </div>
+                          
+                          {/* Floating glow effect */}
+                          <div className="absolute inset-0 bg-red-500/30 rounded-lg blur-md -z-10 animate-pulse" />
+                        </div>
+                      </div>
+                    )}
 
                     {/* Wishlist */}
                     <button
@@ -300,25 +348,54 @@ export default function ProductsPage() {
                     </button>
                   </div>
 
-                  <div className="p-4">
-                    <Link
-                      href={`/products/${idStr}`}
-                      className="font-semibold line-clamp-1 hover:text-[var(--wnr-berry)]"
-                      prefetch
-                    >
-                      {p.name}
-                    </Link>
+                    <div className="p-4">
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <Link
+                        href={`/products/${idStr}`}
+                        className={`font-semibold line-clamp-1 hover:text-[var(--wnr-berry)] flex-1 ${isOutOfStock ? 'text-gray-500' : ''}`}
+                        prefetch
+                      >
+                        {p.name}
+                      </Link>
+                      {isOutOfStock && (
+                        <span className="text-xs px-2 py-0.5 bg-gray-600 text-white rounded-full font-medium shrink-0">
+                          Out of Stock
+                        </span>
+                      )}
+                    </div>
                     <div className="text-xs muted mt-1">{pack}</div>
-                    <div className="mt-2 font-semibold">₹{price}</div>
+                        <div className="mt-2">
+                          {p.discountPercentage && p.discountPercentage > 0 && !isOutOfStock ? (
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm text-gray-500 line-through">₹{price}</span>
+                              <span className={`text-xl md:text-2xl font-extrabold ${isOutOfStock ? 'text-gray-400' : 'text-[var(--wnr-berry)]'}`}>
+                                ₹{Math.round(price * (1 - p.discountPercentage / 100)).toLocaleString("en-IN")}
+                              </span>
+                            </div>
+                          ) : (
+                            <div className={`text-xl md:text-2xl font-extrabold ${isOutOfStock ? 'text-gray-400' : 'text-[var(--wnr-berry)]'}`}>₹{price}</div>
+                          )}
+                        </div>
 
                     <div className="mt-3 flex gap-2">
                       <button
                         type="button"
-                        onClick={() => void addToCart(idStr, p.name)}
-                        className="flex-1 h-10 rounded-full ring-1 ring-black/10 hover:bg-black/5 grid place-items-center"
+                        disabled={isOutOfStock}
+                        onClick={() => {
+                          if (isOutOfStock) {
+                            toast.error("This product is out of stock");
+                            return;
+                          }
+                          void addToCart(idStr, p.name);
+                        }}
+                        className={`flex-1 h-10 rounded-full ring-1 ring-black/10 grid place-items-center transition ${
+                          isOutOfStock
+                            ? 'opacity-50 cursor-not-allowed bg-gray-100'
+                            : 'hover:bg-black/5 cursor-pointer'
+                        }`}
                       >
                         <span className="inline-flex items-center gap-1 text-sm">
-                          <IoBagHandleOutline /> Add
+                          <IoBagHandleOutline /> {isOutOfStock ? 'Out of Stock' : 'Add'}
                         </span>
                       </button>
 

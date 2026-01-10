@@ -5,7 +5,10 @@ import autoTable from "jspdf-autotable";
 type OrderItem = {
   product?: string;
   name: string;
-  price: number;
+  price: number; // final price after discount
+  originalPrice?: number; // original price before discount
+  discountPercentage?: number; // discount percentage (0-100)
+  discountAmount?: number; // discount amount
   qty: number;
   imageUrl?: string;
 };
@@ -226,13 +229,20 @@ export async function renderInvoicePDF(order: ClientOrderDetail) {
   doc.line(left, y, right, y);
 
   // -------------------- Items Table --------------------
-  const rows = order.items.map((it, i) => [
-    String(i + 1),
-    it.name || "Item",
-    String(it.qty || 1),
-    cur(it.price),
-    cur((it.qty || 1) * (it.price || 0)),
-  ]);
+  // Show original price and discount if applicable
+  const rows = order.items.map((it, i) => {
+    const hasDiscount = typeof it.originalPrice === 'number' && it.originalPrice > it.price;
+    const unitPriceDisplay = hasDiscount 
+      ? `${cur(it.originalPrice)} → ${cur(it.price)}`
+      : cur(it.price);
+    return [
+      String(i + 1),
+      it.name || "Item",
+      String(it.qty || 1),
+      unitPriceDisplay,
+      cur((it.qty || 1) * (it.price || 0)),
+    ];
+  });
 
   autoTable(doc, {
     startY: y + 12,
@@ -257,9 +267,9 @@ export async function renderInvoicePDF(order: ClientOrderDetail) {
     },
     columnStyles: {
       0: { cellWidth: 30, halign: "center" },
-      1: { cellWidth: 240 },
+      1: { cellWidth: 220 },
       2: { cellWidth: 40, halign: "right" },
-      3: { cellWidth: 90, halign: "right" },
+      3: { cellWidth: 110, halign: "right" },
       4: { cellWidth: 100, halign: "right", fontStyle: "bold" },
     },
     margin: { left, right: 40 },
@@ -283,7 +293,16 @@ export async function renderInvoicePDF(order: ClientOrderDetail) {
   doc.text(cur(sub), right, ty, { align: "right" });
   ty += 14;
   doc.text("Shipping:", summaryLeft, ty);
-  doc.text(cur(shipCost), right, ty, { align: "right" });
+  // Show "FREE" if shipping is 0, otherwise show the amount
+  if (shipCost === 0) {
+    doc.setTextColor(0, 150, 0); // Green color for FREE
+    doc.setFont("helvetica", "bold");
+    doc.text("FREE", right, ty, { align: "right" });
+    doc.setTextColor(30); // Reset color
+    doc.setFont("helvetica", "normal");
+  } else {
+    doc.text(cur(shipCost), right, ty, { align: "right" });
+  }
   ty += 18;
   
   // Grand total with emphasis

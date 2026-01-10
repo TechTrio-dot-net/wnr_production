@@ -49,15 +49,15 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE),
-  title: { default: "Wild n' Root", template: "%s | Wild n' Root" },
+  title: { default: "Wild n' Root Herbal Brew | A Good Habit", template: "%s | Wild n' Root" },
   description:
-    "Wild n' Root crafts wellness brews and rituals rooted in nature—herbal dip bags, copperware, and mindful essentials for a good habit.",
+    "Wild n' Root crafts wellness brews and rituals rooted in nature—herbal dip bags, and mindful essentials for a good habit.",
   applicationName: "Wild n' Root",
   keywords: [
     "Wild n Root","wildnroot","herbal brew","herbal dip bags","ayurvedic","wellness",
     "natural wellness","power brew","slim brew","good habit","A Good Habit"
   ],
-  authors: [{ name: "Wild n Root" }],
+  authors: [{ name: "Wild n' Root" }],
   creator: "Wild n' Root",
   publisher: "Wild n' Root",
   alternates: { canonical: "/", languages: { "en-IN": "/" } },
