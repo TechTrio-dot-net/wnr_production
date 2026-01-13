@@ -1,0 +1,332 @@
+  /* === Tailwind v4 core === */
+  @import "tailwindcss";
+
+  /* === Fonts ===
+    Loaded with next/font/local in app/layout.tsx:
+    - --font-sahet  -> ara hamah sahet AlAssi (content)
+    - --font-zanki  -> ara hamah Zanki (titles)
+    No @font-face here to avoid double-loading.
+  */
+
+  /* === Theme tokens === */
+  :root{
+    --wnr-berry:#6a2d47;        /* primary maroon/berry */
+    --wnr-berry-900:#4B1420;
+    --wnr-berry-700:#8A2C42; 
+    --wnr-orange:#D96D27;       /* accent (tabs/badges) */
+    --wnr-pink:#F2B3B3;         /* soft accent */
+    --wnr-green:#8BBF6F;        /* success/tea accent */
+    --wnr-yellow:#d6c35c;
+     --wnr-orange-700: color-mix(in oklab, var(--wnr-orange) 82%, black 18%);
+  --wnr-orange-900: color-mix(in oklab, var(--wnr-orange) 62%, black 38%);
+
+  /* PINK (base is light → darken more for contrast) */
+  --wnr-pink-700:   color-mix(in oklab, var(--wnr-pink) 75%, black 25%);
+  --wnr-pink-900:   color-mix(in oklab, var(--wnr-pink) 55%, black 45%);
+
+  /* GREEN */
+  --wnr-green-700:  color-mix(in oklab, var(--wnr-green) 82%, black 18%);
+  --wnr-green-900:  color-mix(in oklab, var(--wnr-green) 62%, black 38%);
+
+  /* YELLOW (very light → push darker for legibility) */
+  --wnr-yellow-700: color-mix(in oklab, var(--wnr-yellow) 78%, black 22%);
+  --wnr-yellow-900: color-mix(in oklab, var(--wnr-yellow) 52%, black 48%);
+
+    --wnr-text:#3B2A2F;         /* body text */
+    --wnr-cream:#e8e5dc;        /* page background */
+    --wnr-sand:#cfcbbf;         /* section alt bg / cards */
+
+
+    --shadow-soft: 0 8px 30px rgba(0,0,0,.06);
+  }
+
+  /* === Base & typography === */
+  html, body { height: 100%; }
+  body{
+    /* Use Sahet AlAssi (content) with safe fallbacks */
+    font-family: var(--font-sahet), Inter, system-ui, -apple-system, "Segoe UI",
+                Roboto, Arial, "Noto Sans", "Helvetica Neue",
+                "Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol";
+    color: var(--wnr-text);
+    background: var(--wnr-cream);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Headings use Zanki (titles), fall back to Sahet */
+  h1,h2,h3,h4{
+    font-family: var(--font-zanki), var(--font-sahet), Inter, system-ui, -apple-system,
+                "Segoe UI", Roboto, Arial, "Noto Sans", "Helvetica Neue";
+    letter-spacing: -0.01em;
+  }
+  h1{ font-size: clamp(2.25rem, 1.5rem + 2vw, 3rem); font-weight:600; }
+  h2{ font-size: clamp(1.875rem, 1.2rem + 1.6vw, 2.5rem); font-weight:600; }
+  h3{ font-size: clamp(1.5rem, 1.05rem + 1vw, 2rem); font-weight:600; }
+  p{ line-height: 1.7; 
+    font-size: 24px;
+  }
+  li{ 
+    font-size: 20px;
+  }
+  a{ transition: color .2s ease; }
+
+  /* Optional utilities to force fonts when needed */
+  .font-body { font-family: var(--font-sahet), system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .font-title{ font-family: var(--font-zanki), var(--font-sahet), system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+
+  /* === Layout helpers === */
+  .wnr-container{
+    width:100%;
+    max-width:1280px;                /* ≈ Tailwind max-w-7xl */
+    margin-inline:auto;
+    padding-inline:1rem;             /* px-4 */
+  }
+  @media (min-width:640px){          /* sm */
+    .wnr-container{ padding-inline:1.5rem; }  /* px-6 */
+  }
+  @media (min-width:1024px){         /* lg */
+    .wnr-container{ padding-inline:2rem; }    /* px-8 */
+  }
+
+  .section{ padding-block:3.5rem; }           /* py-14 */
+  @media (min-width:768px){ .section{ padding-block:5rem; } } /* md:py-20 */
+
+  .section-tight{ padding-block:2.5rem; }     /* py-10 */
+  @media (min-width:768px){ .section-tight{ padding-block:3.5rem; } } /* md:py-14 */
+
+  .section-alt{ background: var(--wnr-sand); }
+  .hero-berry{ background: linear-gradient(180deg, var(--wnr-berry) 0%, var(--wnr-berry-900) 100%); }
+
+  
+
+  /* === Hero backgrounds per product (using tokens only) === */
+.hero-digestive{ background: linear-gradient(180deg, var(--wnr-orange) 0%, var(--wnr-orange-900) 100%); }
+
+.hero-sugarwise{ background: linear-gradient(180deg, var(--wnr-green) 0%, var(--wnr-green-900) 100%); }
+
+.hero-slim{ background: linear-gradient(180deg, var(--wnr-yellow) 0%, var(--wnr-yellow-900) 100%); }
+
+.hero-gutease{ background: linear-gradient(180deg, var(--wnr-pink) 0%, var(--wnr-pink-900) 100%); }
+
+
+
+  .grid-gap{ gap:1.5rem; }
+  @media (min-width:768px){ .grid-gap{ gap:2rem; } }
+
+  /* === Cards & surfaces === */
+  .card{
+    background:#fff;
+    border-radius:1rem;              /* rounded-2xl */
+    overflow:hidden;
+    box-shadow: var(--shadow-soft);
+  }
+  .card-alt{
+    background: var(--wnr-sand);
+    border-radius:1rem;
+    overflow:hidden;
+    box-shadow: var(--shadow-soft);
+  }
+  .card-pad{ padding:1.25rem; }
+  @media (min-width:768px){ .card-pad{ padding:1.5rem; } }
+  .card-media{
+    aspect-ratio: 4/3;
+    width:100%;
+    object-fit:cover;
+  }
+
+  /* === Buttons === */
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center;
+    border-radius:9999px;
+    padding:0.75rem 1.5rem;          /* px-6 py-3 */
+    font-size:.875rem; font-weight:600;
+    transition: transform .2s ease, box-shadow .2s ease, background .2s ease, color .2s ease;
+  }
+  .btn:active{ transform: scale(.97); }
+
+  .btn-primary{
+    color:#fff;
+    background: linear-gradient(135deg, var(--wnr-berry) 0%, var(--wnr-berry-700) 100%);
+    box-shadow: 0 6px 16px rgba(110,34,52,.25);
+  }
+  .btn-primary:hover{ box-shadow: 0 10px 22px rgba(110,34,52,.28); }
+
+  .btn-outline{
+    border:1px solid var(--wnr-berry);
+    color: var(--wnr-berry);
+    background: transparent;
+  }
+  .btn-outline:hover{
+    background: var(--wnr-berry);
+    color:#fff;
+  }
+
+  .btn-soft{
+    background: color-mix(in oklab, var(--wnr-pink) 40%, transparent);
+    color: var(--wnr-berry);
+  }
+  .btn-soft:hover{
+    background: color-mix(in oklab, var(--wnr-pink) 60%, transparent);
+  }
+
+  /* === Pills / chips === */
+  .pill{ display:inline-flex; align-items:center; border-radius:9999px; padding:.375rem 1rem; font-size:.75rem; font-weight:600; }
+  .pill-berry{ background: var(--wnr-berry); color:#fff; }
+  .pill-orange{ background: var(--wnr-orange); color:#fff; }
+  .pill-cream{ background: var(--wnr-cream); color: var(--wnr-berry); }
+
+  /* === Section-specific helpers === */
+
+  /* Hero */
+  .hero-wrap{ position:relative; overflow:hidden; color:#fff; }
+  .hero-eyebrow{ text-transform:uppercase; letter-spacing:.2em; color:rgba(255,255,255,.8); font-size:.75rem; }
+  @media (min-width:768px){ .hero-eyebrow{ font-size:.875rem; } }
+
+  /* Products grid */
+  .products-grid{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1.5rem; }
+  @media (min-width:768px){ .products-grid{ grid-template-columns:repeat(3,minmax(0,1fr)); gap:2rem; } }
+  @media (min-width:1024px){ .products-grid{ grid-template-columns:repeat(4,minmax(0,1fr)); } }
+  .product-tile{ position:relative; border-radius:.75rem; overflow:hidden; box-shadow: var(--shadow-soft); }
+  .product-tile img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .product-caption{
+    position:absolute; left:.75rem; right:.75rem; bottom:.75rem;
+    color:#fff; font-weight:600; text-shadow:0 2px 8px rgba(0,0,0,.45); font-size:.875rem;
+  }
+
+  /* Benefits strip */
+  .benefits-strip{
+    border-radius:.75rem; overflow:hidden; color:#fff; font-weight:600;
+    background: linear-gradient(90deg, var(--wnr-berry) 0% 50%, var(--wnr-orange) 50% 100%);
+  }
+  .benefits-strip .cell{ padding:.75rem 1rem; display:inline-flex; align-items:center; gap:.5rem; }
+  @media (min-width:768px){ .benefits-strip .cell{ padding:1rem 1.5rem; } }
+
+  /* Rooted reads */
+  .reads-grid{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1.5rem; }
+  @media (min-width:768px){ .reads-grid{ grid-template-columns:repeat(4,minmax(0,1fr)); gap:2rem; } }
+  .read-card h4{ font-size:clamp(1rem, .9rem + .3vw, 1.125rem); font-weight:600; margin-top:.75rem; }
+  .read-card p{ font-size:.875rem; color:rgba(0,0,0,.7); margin-top:.25rem; }
+
+  /* Brew rituals banner */
+  .banner{ position:relative; border-radius:1rem; overflow:hidden; }
+  .banner img{ width:100%; height:auto; object-fit:cover; display:block; }
+  .banner-title{
+    position:absolute; left:50%; transform:translateX(-50%); bottom:1rem;
+    padding:.5rem 1.25rem; border-radius:9999px; background:rgba(0,0,0,.5); color:#fff; font-weight:600; font-size:.875rem; backdrop-filter: blur(6px);
+  }
+
+  /* Instagram row */
+  .insta-row{ display:grid; grid-template-columns:1fr; gap:1.5rem; }
+  @media (min-width:768px){ .insta-row{ grid-template-columns:repeat(3,minmax(0,1fr)); gap:2rem; } }
+  .insta-embed{ background:rgba(0,0,0,.8); color:#fff; border-radius:.75rem; min-height:360px; display:flex; align-items:center; justify-content:center; }
+  @media (min-width:768px){ .insta-embed{ min-height:420px; } }
+
+  /* Footer */
+  .footer-wrap{ padding-top:2.5rem; border-top:1px solid rgba(0,0,0,.1); }
+
+  /* === Small utilities === */
+  .eyebrow{ text-transform:uppercase; letter-spacing:.2em; font-size:.75rem; color: var(--wnr-berry); }
+  .muted{ color: rgba(0,0,0,.7); }
+  .shadow-soft{ box-shadow: var(--shadow-soft); }
+  .ring-soft{ box-shadow: 0 0 0 1px rgba(0,0,0,.05) inset; }
+  /* Hide native scrollbars cross-browser */
+.no-scrollbar {
+  -ms-overflow-style: none;   /* IE/Edge */
+  scrollbar-width: none;      /* Firefox */
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;              /* Chrome/Safari/Opera */
+}
+
+  /* === Offer strip (top promo) === */
+  :root {
+    --offer-strip-height: 0px;
+    --offer-strip-speed: 20s;
+    --navbar-height-mobile: 5.5rem; /* 88px: py-4 (16px) + h-14 (56px) + py-4 (16px) */
+    --navbar-height-desktop: 7rem; /* 112px: py-6 (24px) + h-16 (64px) + py-6 (24px) */
+  }
+  
+  /* Utility class for spacing that accounts for offer strip */
+  .mt-below-navbar {
+    margin-top: calc(5rem + var(--offer-strip-height, 0px));
+  }
+  
+  .mt-below-navbar-lg {
+    margin-top: calc(6.25rem + var(--offer-strip-height, 0px));
+  }
+  .offer-strip{
+    width:100%;
+    overflow:hidden;
+    background:#000;
+    color:#fff;
+    font-size:0.9rem;
+    letter-spacing:.06em;
+    white-space:nowrap;
+    display:block;
+    cursor:default;
+    position: relative;
+    z-index: 1000; /* High z-index for first strip (inside fixed navbar) */
+  }
+  /* Second offer strip (after hero) - override to stay below menus via inline style */
+  .offer-strip[style*="z-index"] {
+    z-index: 0 !important; /* Force low z-index when inline style sets z-index */
+  }
+  .offer-strip:hover .offer-strip-inner{
+    animation-play-state: paused;
+  }
+  .offer-strip-inner{
+    display:inline-flex;
+    padding:.6rem 2rem;
+    text-transform:uppercase;
+    text-align:center;
+    animation: offer-marquee var(--offer-strip-speed, 20s) linear infinite;
+  }
+  @keyframes offer-marquee{
+    0%{ transform: translateX(0); }
+    100%{ transform: translateX(-50%); }
+  }
+
+  /* === Navbar menu z-index classes === */
+  .z-menu-overlay {
+    z-index: 51; /* Above navbar (z-50), below drawers (z-60-70) */
+  }
+  .z-menu-curtain {
+    z-index: 52; /* Above navbar overlay, below drawers */
+  }
+
+  /* === Ingredients strip (below hero) === */
+  :root {
+    --ingredients-strip-speed: 20s;
+  }
+  
+  .ingredients-strip{
+    width:100%;
+    overflow:hidden;
+    background:var(--wnr-berry);
+    color:#fff;
+    font-size:0.9rem;
+    letter-spacing:.06em;
+    white-space:nowrap;
+    display:block;
+    cursor:default;
+    position: relative;
+    z-index: 100;
+  }
+  .ingredients-strip:hover .ingredients-strip-inner{
+    animation-play-state: paused;
+  }
+  .ingredients-strip-inner{
+    display:inline-flex;
+    padding:.6rem 2rem;
+    text-transform:uppercase;
+    text-align:center;
+    animation: ingredients-marquee var(--ingredients-strip-speed, 20s) linear infinite;
+  }
+  @keyframes ingredients-marquee{
+    0%{ transform: translateX(0); }
+    100%{ transform: translateX(-50%); }
+  }
+
+
+
+

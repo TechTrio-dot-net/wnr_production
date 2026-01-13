@@ -1,0 +1,13 @@
+{
+  "name": "Wild n Root",
+  "short_name": "Wild n Root",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FFF8F0",
+  "theme_color": "#5b2d2c",
+  "icons": [
+    { "src": "/icons/favicon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/favicon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
