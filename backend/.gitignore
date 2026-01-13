@@ -2,4 +2,5 @@
 .env
 dist/
 /logs/
+!src/modules/logs/
 node_modules/
